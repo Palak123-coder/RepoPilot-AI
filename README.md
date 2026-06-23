@@ -1,19 +1,23 @@
 # RepoPilot AI
 
-RepoPilot AI is a FastAPI-based codebase search system that indexes public GitHub repositories and returns relevant source files, snippets, indexing time, and query-latency metrics.
+RepoPilot AI is a FastAPI-based codebase intelligence system that indexes public GitHub repositories and returns relevant source files, snippets, indexing time, query-latency metrics, and semantic search results.
 
-This is the MVP version of a larger agentic codebase search and bug-triage system. The goal is to help developers understand unfamiliar repositories, locate relevant files, and debug code faster.
+This project is the foundation of an agentic codebase search and bug-triage system. The goal is to help developers understand unfamiliar repositories, locate relevant files, and debug code faster using repository parsing, code chunking, embeddings, and vector search.
 
 ## Current Features
 
 * Accepts a public GitHub repository URL
 * Clones the repository locally using GitPython
 * Parses supported source-code and documentation files
-* Ignores heavy folders like `.git`, `node_modules`, `venv`, `dist`, and `build`
+* Ignores heavy/generated folders like `.git`, `node_modules`, `venv`, `dist`, and `build`
 * Indexes file paths and file contents
 * Supports keyword-based code search
-* Returns relevant file paths, snippets, scores, and query latency
-* Tracks repository indexing status, files indexed, indexing time, and errors
+* Splits repository files into overlapping code chunks
+* Generates embeddings for code and documentation chunks using SentenceTransformers
+* Stores semantic vectors in ChromaDB
+* Supports semantic code search through `/semantic-search`
+* Returns file paths, chunk indexes, distance scores, snippets, and query latency
+* Tracks repository indexing status, files indexed, chunks indexed, indexing time, and errors
 * Exposes API documentation through FastAPI Swagger UI
 
 ## Tech Stack
@@ -24,6 +28,8 @@ This is the MVP version of a larger agentic codebase search and bug-triage syste
 * GitPython
 * Pydantic
 * Python-dotenv
+* ChromaDB
+* SentenceTransformers
 
 ## Project Structure
 
@@ -36,7 +42,9 @@ RepoPilot-AI/
 │   ├── models.py
 │   ├── repo_cloner.py
 │   ├── file_parser.py
-│   └── search_engine.py
+│   ├── search_engine.py
+│   ├── chunker.py
+│   └── vector_store.py
 │
 ├── data/
 │   └── cloned_repos/
@@ -47,6 +55,103 @@ RepoPilot-AI/
 ├── .gitignore
 ├── README.md
 └── requirements.txt
+```
+
+## How It Works
+
+RepoPilot AI follows this indexing flow:
+
+```text
+GitHub repository URL
+        ↓
+Clone repository using GitPython
+        ↓
+Parse supported source-code and documentation files
+        ↓
+Ignore large/generated folders
+        ↓
+Store files for keyword search
+        ↓
+Split files into overlapping chunks
+        ↓
+Generate embeddings for chunks
+        ↓
+Store embeddings in ChromaDB
+        ↓
+Support keyword search and semantic search
+```
+
+## File Parsing
+
+RepoPilot AI supports common source-code and documentation file types, including:
+
+* `.py`
+* `.js`
+* `.ts`
+* `.tsx`
+* `.jsx`
+* `.java`
+* `.cpp`
+* `.c`
+* `.h`
+* `.hpp`
+* `.cs`
+* `.go`
+* `.rs`
+* `.php`
+* `.rb`
+* `.md`
+* `.txt`
+* `.json`
+* `.yml`
+* `.yaml`
+
+It ignores folders that are usually large, generated, or unnecessary for code understanding:
+
+* `.git`
+* `node_modules`
+* `venv`
+* `.venv`
+* `__pycache__`
+* `dist`
+* `build`
+* `.next`
+* `.idea`
+* `.vscode`
+
+## Keyword Search
+
+The `/search` endpoint performs keyword-based search.
+
+For each indexed file:
+
+1. The file content is tokenized.
+2. The query is tokenized.
+3. Query-term matches are counted in each file.
+4. Files are ranked by match score.
+5. The API returns the top-K relevant files with snippets.
+
+This is useful when the user knows the exact terms they want to search for, such as `multithreading`, `synchronization`, `database`, or `authentication`.
+
+## Semantic Search
+
+The `/semantic-search` endpoint performs semantic search using embeddings and ChromaDB.
+
+For each indexed repository:
+
+1. Parsed files are split into overlapping chunks.
+2. Each chunk is converted into an embedding using SentenceTransformers.
+3. Embeddings are stored in ChromaDB.
+4. User queries are converted into embeddings.
+5. ChromaDB retrieves semantically similar chunks.
+6. The API returns relevant file paths, chunk indexes, distance scores, snippets, and query latency.
+
+This allows RepoPilot AI to find relevant code even when the query does not exactly match the wording used inside the repository.
+
+Example semantic query:
+
+```text
+Where is synchronization handled?
 ```
 
 ## API Endpoints
@@ -60,10 +165,12 @@ Example response:
 ```json
 {
   "message": "RepoPilot AI backend is running",
+  "version": "0.2.0",
   "status": {
     "status": "idle",
     "repo_url": null,
     "files_indexed": 0,
+    "chunks_indexed": 0,
     "indexing_time_ms": 0,
     "error": null
   }
@@ -89,13 +196,14 @@ Example response:
   "message": "Repository indexed successfully",
   "repo_url": "https://github.com/Palak123-coder/MiniSearchX",
   "files_indexed": 6,
-  "indexing_time_ms": 2519
+  "chunks_indexed": 29,
+  "indexing_time_ms": 5748
 }
 ```
 
 ### `POST /search`
 
-Searches the indexed repository.
+Performs keyword-based search over indexed repository files.
 
 Request body:
 
@@ -110,6 +218,7 @@ Example response:
 
 ```json
 {
+  "search_type": "keyword",
   "query": "multithreading synchronization",
   "top_k": 5,
   "query_latency_ms": 2,
@@ -118,6 +227,44 @@ Example response:
       "path": "README.md",
       "score": 8,
       "snippet": "This project demonstrates core software engineering concepts including data structures, algorithms, file processing, multithreading, synchronization..."
+    }
+  ]
+}
+```
+
+### `POST /semantic-search`
+
+Performs semantic search over indexed code chunks.
+
+Request body:
+
+```json
+{
+  "query": "Where is synchronization handled?",
+  "top_k": 5
+}
+```
+
+Example response:
+
+```json
+{
+  "search_type": "semantic",
+  "query": "Where is synchronization handled?",
+  "top_k": 5,
+  "query_latency_ms": 68,
+  "results": [
+    {
+      "path": "data\\doc3.txt",
+      "chunk_index": 0,
+      "distance": 0.9319181442260742,
+      "snippet": "Operating systems use threads, synchronization, mutexes, and scheduling for concurrent execution."
+    },
+    {
+      "path": "README.md",
+      "chunk_index": 1,
+      "distance": 1.4494549798965454,
+      "snippet": "Tech Stack\\n\\n- C++\\n- STL\\n- Hash Maps\\n- Priority Queue\\n- File I/O\\n- TF-IDF Ranking\\n- BM25 Ranking\\n- Windows Threads\\n- Critical Sections for Synchronization..."
     }
   ]
 }
@@ -134,79 +281,11 @@ Example response:
   "status": "completed",
   "repo_url": "https://github.com/Palak123-coder/MiniSearchX",
   "files_indexed": 6,
-  "indexing_time_ms": 2519,
+  "chunks_indexed": 29,
+  "indexing_time_ms": 5748,
   "error": null
 }
 ```
-
-## How It Works
-
-RepoPilot AI follows this flow:
-
-```text
-GitHub repository URL
-        ↓
-Clone repository using GitPython
-        ↓
-Parse supported source-code and documentation files
-        ↓
-Ignore large/generated folders
-        ↓
-Index file paths and file contents
-        ↓
-Search indexed files using keyword scoring
-        ↓
-Return relevant file paths, snippets, scores, and latency
-```
-
-## File Parsing
-
-RepoPilot AI supports common source-code and documentation file types, including:
-
-* `.py`
-* `.js`
-* `.ts`
-* `.tsx`
-* `.jsx`
-* `.java`
-* `.cpp`
-* `.c`
-* `.h`
-* `.hpp`
-* `.go`
-* `.rs`
-* `.md`
-* `.txt`
-* `.json`
-* `.yml`
-* `.yaml`
-
-It ignores folders that are usually large, generated, or unnecessary for code understanding, such as:
-
-* `.git`
-* `node_modules`
-* `venv`
-* `.venv`
-* `__pycache__`
-* `dist`
-* `build`
-* `.next`
-* `.idea`
-* `.vscode`
-
-## Search Logic
-
-The current MVP uses keyword-based search.
-
-For each indexed file:
-
-1. The file content is tokenized.
-2. Query terms are tokenized.
-3. The search engine counts query-term matches in each file.
-4. Files are ranked by match score.
-5. The API returns the top-K relevant files with snippets.
-
-This will later be upgraded to semantic search using embeddings and a vector database.
 
 ## Setup Instructions
 
@@ -217,13 +296,13 @@ git clone https://github.com/Palak123-coder/RepoPilot-AI.git
 cd RepoPilot-AI
 ```
 
-### 2. Create virtual environment
+### 2. Create a virtual environment
 
 ```powershell
 py -3.10 -m venv venv
 ```
 
-### 3. Activate virtual environment
+### 3. Activate the virtual environment
 
 ```powershell
 .\venv\Scripts\activate
@@ -236,6 +315,12 @@ pip install -r requirements.txt
 ```
 
 ### 5. Run the backend
+
+```powershell
+uvicorn backend.main:app
+```
+
+For development with auto-reload:
 
 ```powershell
 uvicorn backend.main:app --reload
@@ -251,7 +336,7 @@ http://127.0.0.1:8000/docs
 
 ## Example Usage
 
-### Index a repository
+### Step 1: Index a repository
 
 Use `POST /index` with:
 
@@ -261,7 +346,7 @@ Use `POST /index` with:
 }
 ```
 
-### Search the indexed repository
+### Step 2: Run keyword search
 
 Use `POST /search` with:
 
@@ -272,21 +357,32 @@ Use `POST /search` with:
 }
 ```
 
-## Current MVP Result
+### Step 3: Run semantic search
 
-RepoPilot AI successfully indexed the MiniSearchX repository and returned relevant search results.
+Use `POST /semantic-search` with:
 
-Example metrics:
+```json
+{
+  "query": "Where is synchronization handled?",
+  "top_k": 5
+}
+```
+
+## Current Demo Metrics
+
+RepoPilot AI successfully indexed the MiniSearchX repository and returned both keyword and semantic search results.
 
 ```text
 Files indexed: 6
-Indexing time: 2519 ms
-Query latency: 2 ms
+Chunks indexed: 29
+Indexing time: 5748 ms
+Keyword query latency: 2 ms
+Semantic query latency: 68 ms
 ```
 
 ## Current Status
 
-This is the MVP version.
+This is version `0.2.0`.
 
 Completed:
 
@@ -294,20 +390,34 @@ Completed:
 * Source-file parsing
 * Ignored-folder filtering
 * Keyword-based search
+* Code chunking
+* Embedding generation
+* ChromaDB vector storage
+* Semantic search
 * Snippet extraction
 * Indexing-status tracking
 * Query-latency reporting
 * FastAPI Swagger documentation
 
+## Current Limitations
+
+* Supports one indexed repository at a time
+* Semantic search currently returns retrieved chunks, not final LLM-generated answers
+* No frontend dashboard yet
+* No background worker queue yet
+* No persistent job history yet
+* No authentication for private repositories yet
+* No Docker setup yet
+
 ## Upcoming Improvements
 
-* Add code chunking for large files
-* Add semantic search using embeddings
-* Add ChromaDB vector database integration
-* Add RAG-based answers with grounded file references
+* Add RAG-based `/ask` endpoint with grounded answers and file references
 * Add Gemini or Groq LLM integration
 * Add Streamlit dashboard
 * Add background indexing jobs
 * Add retry handling and failed-job logs
 * Add Docker support
 * Add unit tests
+* Add repository summary generation
+* Add architecture explanation endpoint
+* Add bug-triage suggestions based on retrieved code chunks
