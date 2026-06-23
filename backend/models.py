@@ -8,3 +8,8 @@ class IndexRequest(BaseModel):
 class SearchRequest(BaseModel):
     query: str
     top_k: int = 5
+
+
+class SemanticSearchRequest(BaseModel):
+    query: str
+    top_k: int = 5
