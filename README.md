@@ -392,8 +392,6 @@ GROQ_API_KEY=your_actual_groq_api_key_here
 GROQ_MODEL=llama-3.1-8b-instant
 ```
 
-Do not push `.env` to GitHub. Use `.env.example` as the reference template.
-
 ### 6. Run the backend
 
 ```powershell
