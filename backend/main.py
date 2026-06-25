@@ -4,7 +4,8 @@ from fastapi import FastAPI, HTTPException
 
 from backend.chunker import chunk_files
 from backend.file_parser import parse_repository
-from backend.models import IndexRequest, SearchRequest, SemanticSearchRequest
+from backend.models import IndexRequest, SearchRequest, SemanticSearchRequest, AskRequest
+from backend.rag_agent import RAGAgent
 from backend.repo_cloner import clone_repository
 from backend.search_engine import SimpleCodeSearchEngine
 from backend.vector_store import SemanticCodeVectorStore
@@ -13,11 +14,12 @@ from backend.vector_store import SemanticCodeVectorStore
 app = FastAPI(
     title="RepoPilot AI",
     description="Agentic codebase search and bug triage system",
-    version="0.2.0"
+    version="0.3.0"
 )
 
 keyword_search_engine = SimpleCodeSearchEngine()
 semantic_vector_store = SemanticCodeVectorStore()
+rag_agent = RAGAgent()
 
 repo_status = {
     "status": "idle",
@@ -33,7 +35,7 @@ repo_status = {
 def root():
     return {
         "message": "RepoPilot AI backend is running",
-        "version": "0.2.0",
+        "version": "0.3.0",
         "status": repo_status
     }
 
@@ -126,6 +128,43 @@ def semantic_search_repository(request: SemanticSearchRequest):
         "query_latency_ms": elapsed_ms,
         "results": results
     }
+
+
+@app.post("/ask")
+def ask_repository(request: AskRequest):
+    start_time = time.time()
+
+    if repo_status["status"] != "completed":
+        raise HTTPException(
+            status_code=400,
+            detail="No repository indexed yet. Please index a repository first."
+        )
+
+    try:
+        retrieved_chunks = semantic_vector_store.semantic_search(
+            request.question,
+            request.top_k
+        )
+
+        rag_response = rag_agent.answer_question(
+            request.question,
+            retrieved_chunks
+        )
+
+        elapsed_ms = int((time.time() - start_time) * 1000)
+
+        return {
+            "answer_type": "rag",
+            "question": request.question,
+            "top_k": request.top_k,
+            "answer_latency_ms": elapsed_ms,
+            "answer": rag_response["answer"],
+            "sources": rag_response["sources"],
+            "retrieved_chunks": retrieved_chunks
+        }
+
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=str(error))
 
 
 @app.get("/status")
