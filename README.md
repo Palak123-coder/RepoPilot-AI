@@ -1,10 +1,10 @@
 # RepoPilot AI
 
-RepoPilot AI is a FastAPI-based codebase intelligence system that indexes public GitHub repositories and answers developer questions using keyword search, semantic search, RAG-based answer generation, and background indexing jobs.
+RepoPilot AI is a FastAPI-based codebase intelligence system that indexes public GitHub repositories and answers developer questions using keyword search, semantic search, RAG-based answer generation, background indexing jobs, and an interactive Streamlit dashboard.
 
-The project helps developers understand unfamiliar repositories, locate relevant files, and debug code faster using repository parsing, code chunking, embeddings, vector search, Groq-powered grounded answers, asynchronous job tracking, and an interactive Streamlit dashboard.
+The project helps developers understand unfamiliar repositories, locate relevant files, and debug code faster using repository parsing, code chunking, embeddings, vector search, Groq-powered grounded answers, asynchronous job tracking, live job-status polling, and source file references.
 
-## Current Features
+## Features
 
 * Accepts a public GitHub repository URL
 * Clones the repository locally using GitPython
@@ -26,7 +26,9 @@ The project helps developers understand unfamiliar repositories, locate relevant
 * Tracks job status as `pending`, `running`, `completed`, or `failed`
 * Tracks job metadata including `created_at`, `started_at`, and `completed_at`
 * Provides an interactive Streamlit dashboard for repository indexing, keyword search, semantic search, and RAG-based question answering
-* Displays files indexed, chunks indexed, indexing time, query latency, answer latency, generated answers, and source file references
+* Uses Streamlit dashboard polling to track `/index-job` progress through `/jobs/{job_id}`
+* Displays live job status, job ID, files indexed, chunks indexed, and indexing time
+* Displays query latency, answer latency, generated answers, and source file references
 * Tracks repository indexing status, files indexed, chunks indexed, indexing time, and errors
 * Exposes API documentation through FastAPI Swagger UI
 
@@ -44,7 +46,7 @@ The project helps developers understand unfamiliar repositories, locate relevant
 * RAG
 * Streamlit
 * Requests
-* BackgroundTasks
+* FastAPI BackgroundTasks
 * Threading
 * UUID-based job tracking
 
@@ -79,7 +81,8 @@ RepoPilot-AI/
 │   ├── dashboard-search.png
 │   ├── dashboard-rag.png
 │   ├── index-job-started.png
-│   └── job-status-completed.png
+│   ├── job-status-completed.png
+│   └── dashboard-job-status.png
 │
 ├── .env.example
 ├── .gitignore
@@ -132,6 +135,8 @@ GET /jobs/{job_id}
         ↓
 Check pending/running/completed/failed status
 ```
+
+The Streamlit dashboard uses this background indexing workflow and polls the backend until the indexing job is completed.
 
 ## File Parsing
 
@@ -240,6 +245,7 @@ This demonstrates:
 * Error reporting
 * System reliability design
 * Backend state management
+* Separation between request submission and long-running processing
 
 Job statuses:
 
@@ -257,8 +263,12 @@ RepoPilot AI includes a Streamlit dashboard for using the system through a simpl
 The dashboard supports:
 
 * Repository URL input
-* Repository indexing button
+* Background indexing job creation using `/index-job`
+* Live job-status polling using `/jobs/{job_id}`
+* Job ID display
 * Files indexed, chunks indexed, and indexing-time metrics
+* Repository status refresh
+* Background job history using `/jobs`
 * Keyword search with ranked results
 * Semantic search with chunk-level results
 * RAG-based question answering
@@ -501,7 +511,7 @@ Example response:
   "repo_url": "https://github.com/Palak123-coder/MiniSearchX",
   "files_indexed": 6,
   "chunks_indexed": 29,
-  "indexing_time_ms": 5176,
+  "indexing_time_ms": 6091,
   "error": null
 }
 ```
@@ -601,12 +611,44 @@ Example completed response:
   "status": "completed",
   "files_indexed": 6,
   "chunks_indexed": 29,
-  "indexing_time_ms": 5176,
+  "indexing_time_ms": 6091,
   "error": null
 }
 ```
 
-### Step 3: Run keyword search
+### Step 3: View job status in Streamlit
+
+Open the Streamlit dashboard and click:
+
+```text
+Start Indexing Job
+```
+
+The dashboard will show:
+
+```text
+Job ID
+Live Job Status
+Files Indexed
+Chunks Indexed
+Indexing Time
+```
+
+### Step 4: Load job history
+
+Click:
+
+```text
+Load Job History
+```
+
+This fetches job history from:
+
+```text
+GET /jobs
+```
+
+### Step 5: Run keyword search
 
 Use `POST /search` or the Streamlit dashboard with:
 
@@ -617,7 +659,7 @@ Use `POST /search` or the Streamlit dashboard with:
 }
 ```
 
-### Step 4: Run semantic search
+### Step 6: Run semantic search
 
 Use `POST /semantic-search` or the Streamlit dashboard with:
 
@@ -628,7 +670,7 @@ Use `POST /semantic-search` or the Streamlit dashboard with:
 }
 ```
 
-### Step 5: Ask a RAG question
+### Step 7: Ask a RAG question
 
 Use `POST /ask` or the Streamlit dashboard with:
 
@@ -641,12 +683,12 @@ Use `POST /ask` or the Streamlit dashboard with:
 
 ## Current Demo Metrics
 
-RepoPilot AI successfully indexed the MiniSearchX repository and returned keyword search, semantic search, RAG answer-generation, and background job tracking results.
+RepoPilot AI successfully indexed the MiniSearchX repository and returned keyword search, semantic search, RAG answer-generation, background job tracking, and live Streamlit job-status results.
 
 ```text
 Files indexed: 6
 Chunks indexed: 29
-Background indexing time: 5176 ms
+Background indexing time: 6091 ms
 Keyword query latency: 1 ms
 Semantic query latency: 45 ms
 RAG answer latency: 815 ms
@@ -686,11 +728,14 @@ RAG answer latency: 815 ms
 
 ![Job Status Completed](screenshots/job-status-completed.png)
 
+### Streamlit Dashboard - Live Job Status
+
+![Dashboard Job Status](screenshots/dashboard-job-status.png)
+
 ## Current Status
 
 This is version `0.5.0`.
 
-Completed:
 
 * GitHub repository cloning
 * Source-file parsing
@@ -710,6 +755,8 @@ Completed:
 * Job timestamps
 * Error tracking for failed jobs
 * Streamlit dashboard
+* Live job-status polling in Streamlit dashboard
+* Dashboard support for `/index-job` and `/jobs/{job_id}`
 * Snippet extraction
 * Indexing-status tracking
 * Query-latency reporting
@@ -720,7 +767,6 @@ Completed:
 
 ## Upcoming Improvements
 
-* Update Streamlit dashboard to start `/index-job` and poll `/jobs/{job_id}`
 * Add persistent job storage using SQLite or PostgreSQL
 * Add retry handling and failed-job logs
 * Add Celery/Redis-based background workers
