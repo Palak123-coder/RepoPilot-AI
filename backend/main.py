@@ -159,8 +159,7 @@ def ask_repository(request: AskRequest):
             "top_k": request.top_k,
             "answer_latency_ms": elapsed_ms,
             "answer": rag_response["answer"],
-            "sources": rag_response["sources"],
-            "retrieved_chunks": retrieved_chunks
+            "sources": rag_response["sources"]
         }
 
     except Exception as error:
