@@ -1,8 +1,8 @@
 # RepoPilot AI
 
-RepoPilot AI is a FastAPI-based codebase intelligence system that indexes public GitHub repositories and returns relevant source files, snippets, indexing time, query-latency metrics, and semantic search results.
+RepoPilot AI is a FastAPI-based codebase intelligence system that indexes public GitHub repositories and answers developer questions using keyword search, semantic search, and RAG-based answer generation.
 
-This project is the foundation of an agentic codebase search and bug-triage system. The goal is to help developers understand unfamiliar repositories, locate relevant files, and debug code faster using repository parsing, code chunking, embeddings, and vector search.
+The project helps developers understand unfamiliar repositories, locate relevant files, and debug code faster using repository parsing, code chunking, embeddings, vector search, and Groq-powered grounded answers.
 
 ## Current Features
 
@@ -11,11 +11,14 @@ This project is the foundation of an agentic codebase search and bug-triage syst
 * Parses supported source-code and documentation files
 * Ignores heavy/generated folders like `.git`, `node_modules`, `venv`, `dist`, and `build`
 * Indexes file paths and file contents
-* Supports keyword-based code search
+* Supports keyword-based code search through `/search`
 * Splits repository files into overlapping code chunks
 * Generates embeddings for code and documentation chunks using SentenceTransformers
 * Stores semantic vectors in ChromaDB
 * Supports semantic code search through `/semantic-search`
+* Supports RAG-based question answering through `/ask`
+* Uses semantic retrieval over indexed code chunks before generating answers
+* Generates grounded answers using Groq LLM with relevant file references
 * Returns file paths, chunk indexes, distance scores, snippets, and query latency
 * Tracks repository indexing status, files indexed, chunks indexed, indexing time, and errors
 * Exposes API documentation through FastAPI Swagger UI
@@ -30,6 +33,8 @@ This project is the foundation of an agentic codebase search and bug-triage syst
 * Python-dotenv
 * ChromaDB
 * SentenceTransformers
+* Groq API
+* RAG
 
 ## Project Structure
 
@@ -44,7 +49,8 @@ RepoPilot-AI/
 │   ├── file_parser.py
 │   ├── search_engine.py
 │   ├── chunker.py
-│   └── vector_store.py
+│   ├── vector_store.py
+│   └── rag_agent.py
 │
 ├── data/
 │   └── cloned_repos/
@@ -59,7 +65,7 @@ RepoPilot-AI/
 
 ## How It Works
 
-RepoPilot AI follows this indexing flow:
+RepoPilot AI follows this workflow:
 
 ```text
 GitHub repository URL
@@ -78,7 +84,9 @@ Generate embeddings for chunks
         ↓
 Store embeddings in ChromaDB
         ↓
-Support keyword search and semantic search
+Retrieve relevant chunks using semantic search
+        ↓
+Generate grounded answers using Groq LLM
 ```
 
 ## File Parsing
@@ -154,6 +162,26 @@ Example semantic query:
 Where is synchronization handled?
 ```
 
+## RAG Answer Generation
+
+The `/ask` endpoint performs RAG-based question answering over the indexed repository.
+
+For each question:
+
+1. The question is converted into an embedding.
+2. ChromaDB retrieves the most relevant code/documentation chunks.
+3. Retrieved chunks are passed to the Groq LLM as grounded context.
+4. The LLM generates an answer using only the retrieved repository context.
+5. The API returns the answer along with relevant file references.
+
+This makes RepoPilot AI useful for architecture understanding, debugging, and feature-navigation questions.
+
+Example RAG question:
+
+```text
+Where is synchronization handled in this project?
+```
+
 ## API Endpoints
 
 ### `GET /`
@@ -165,7 +193,7 @@ Example response:
 ```json
 {
   "message": "RepoPilot AI backend is running",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "status": {
     "status": "idle",
     "repo_url": null,
@@ -197,7 +225,7 @@ Example response:
   "repo_url": "https://github.com/Palak123-coder/MiniSearchX",
   "files_indexed": 6,
   "chunks_indexed": 29,
-  "indexing_time_ms": 5748
+  "indexing_time_ms": 5558
 }
 ```
 
@@ -270,6 +298,43 @@ Example response:
 }
 ```
 
+### `POST /ask`
+
+Answers a natural-language question about the indexed repository using semantic retrieval and Groq LLM.
+
+Request body:
+
+```json
+{
+  "question": "Where is synchronization handled in this project?",
+  "top_k": 5
+}
+```
+
+Example response:
+
+```json
+{
+  "answer_type": "rag",
+  "question": "Where is synchronization handled in this project?",
+  "top_k": 5,
+  "answer_latency_ms": 1200,
+  "answer": "Synchronization is handled using Windows Critical Sections. The shared inverted index is updated inside a synchronized critical section to prevent race conditions while multiple worker threads index documents in parallel.",
+  "sources": [
+    {
+      "path": "src\\main.cpp",
+      "chunk_index": 6,
+      "distance": 1.600897687911987
+    },
+    {
+      "path": "README.md",
+      "chunk_index": 4,
+      "distance": 1.6006269454956055
+    }
+  ]
+}
+```
+
 ### `GET /status`
 
 Returns the current repository indexing status.
@@ -282,7 +347,7 @@ Example response:
   "repo_url": "https://github.com/Palak123-coder/MiniSearchX",
   "files_indexed": 6,
   "chunks_indexed": 29,
-  "indexing_time_ms": 5748,
+  "indexing_time_ms": 5558,
   "error": null
 }
 ```
@@ -314,7 +379,18 @@ py -3.10 -m venv venv
 pip install -r requirements.txt
 ```
 
-### 5. Run the backend
+### 5. Configure environment variables
+
+Create a `.env` file in the project root:
+
+```env
+GROQ_API_KEY=your_actual_groq_api_key_here
+GROQ_MODEL=llama-3.1-8b-instant
+```
+
+Do not push `.env` to GitHub. Use `.env.example` as the reference template.
+
+### 6. Run the backend
 
 ```powershell
 uvicorn backend.main:app
@@ -326,7 +402,7 @@ For development with auto-reload:
 uvicorn backend.main:app --reload
 ```
 
-### 6. Open Swagger UI
+### 7. Open Swagger UI
 
 Open this URL in your browser:
 
@@ -368,21 +444,33 @@ Use `POST /semantic-search` with:
 }
 ```
 
+### Step 4: Ask a RAG question
+
+Use `POST /ask` with:
+
+```json
+{
+  "question": "Where is synchronization handled in this project?",
+  "top_k": 5
+}
+```
+
 ## Current Demo Metrics
 
-RepoPilot AI successfully indexed the MiniSearchX repository and returned both keyword and semantic search results.
+RepoPilot AI successfully indexed the MiniSearchX repository and returned keyword search, semantic search, and RAG answer-generation results.
 
 ```text
 Files indexed: 6
 Chunks indexed: 29
-Indexing time: 5748 ms
+Indexing time: 5558 ms
 Keyword query latency: 2 ms
 Semantic query latency: 68 ms
+RAG answer generation: enabled
 ```
 
 ## Current Status
 
-This is version `0.2.0`.
+This is version `0.3.0`.
 
 Completed:
 
@@ -394,6 +482,9 @@ Completed:
 * Embedding generation
 * ChromaDB vector storage
 * Semantic search
+* RAG-based answer generation
+* Groq LLM integration
+* Grounded answers with source file references
 * Snippet extraction
 * Indexing-status tracking
 * Query-latency reporting
@@ -402,17 +493,15 @@ Completed:
 ## Current Limitations
 
 * Supports one indexed repository at a time
-* Semantic search currently returns retrieved chunks, not final LLM-generated answers
 * No frontend dashboard yet
 * No background worker queue yet
 * No persistent job history yet
 * No authentication for private repositories yet
 * No Docker setup yet
+* No unit tests yet
 
 ## Upcoming Improvements
 
-* Add RAG-based `/ask` endpoint with grounded answers and file references
-* Add Gemini or Groq LLM integration
 * Add Streamlit dashboard
 * Add background indexing jobs
 * Add retry handling and failed-job logs
@@ -421,3 +510,4 @@ Completed:
 * Add repository summary generation
 * Add architecture explanation endpoint
 * Add bug-triage suggestions based on retrieved code chunks
+* Add support for private repositories
