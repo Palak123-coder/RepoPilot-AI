@@ -1,6 +1,9 @@
+import threading
 import time
+import uuid
+from datetime import datetime
 
-from fastapi import FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, HTTPException
 
 from backend.chunker import chunk_files
 from backend.file_parser import parse_repository
@@ -14,7 +17,7 @@ from backend.vector_store import SemanticCodeVectorStore
 app = FastAPI(
     title="RepoPilot AI",
     description="Agentic codebase search and bug triage system",
-    version="0.3.0"
+    version="0.5.0"
 )
 
 keyword_search_engine = SimpleCodeSearchEngine()
@@ -30,19 +33,137 @@ repo_status = {
     "error": None
 }
 
+indexing_jobs = {}
+jobs_lock = threading.Lock()
+
+
+def current_timestamp():
+    return datetime.utcnow().isoformat() + "Z"
+
+
+def update_job(job_id: str, **updates):
+    with jobs_lock:
+        if job_id in indexing_jobs:
+            indexing_jobs[job_id].update(updates)
+
+
+def get_job(job_id: str):
+    with jobs_lock:
+        job = indexing_jobs.get(job_id)
+
+        if job is None:
+            return None
+
+        return dict(job)
+
+
+def create_indexing_job(repo_url: str):
+    job_id = str(uuid.uuid4())
+
+    job = {
+        "job_id": job_id,
+        "repo_url": repo_url,
+        "status": "pending",
+        "files_indexed": 0,
+        "chunks_indexed": 0,
+        "indexing_time_ms": 0,
+        "error": None,
+        "created_at": current_timestamp(),
+        "started_at": None,
+        "completed_at": None
+    }
+
+    with jobs_lock:
+        indexing_jobs[job_id] = job
+
+    return job
+
+
+def perform_indexing(repo_url: str):
+    start_time = time.time()
+
+    repo_path = clone_repository(repo_url)
+
+    files = parse_repository(repo_path)
+    keyword_search_engine.index_files(files)
+
+    chunks = chunk_files(files)
+
+    semantic_vector_store.reset()
+    chunks_indexed = semantic_vector_store.index_chunks(chunks)
+
+    elapsed_ms = int((time.time() - start_time) * 1000)
+
+    return {
+        "message": "Repository indexed successfully",
+        "repo_url": repo_url,
+        "files_indexed": len(files),
+        "chunks_indexed": chunks_indexed,
+        "indexing_time_ms": elapsed_ms
+    }
+
+
+def run_indexing_job(job_id: str, repo_url: str):
+    repo_status["status"] = "indexing"
+    repo_status["repo_url"] = repo_url
+    repo_status["files_indexed"] = 0
+    repo_status["chunks_indexed"] = 0
+    repo_status["indexing_time_ms"] = 0
+    repo_status["error"] = None
+
+    update_job(
+        job_id,
+        status="running",
+        started_at=current_timestamp()
+    )
+
+    try:
+        result = perform_indexing(repo_url)
+
+        repo_status["status"] = "completed"
+        repo_status["files_indexed"] = result["files_indexed"]
+        repo_status["chunks_indexed"] = result["chunks_indexed"]
+        repo_status["indexing_time_ms"] = result["indexing_time_ms"]
+        repo_status["error"] = None
+
+        update_job(
+            job_id,
+            status="completed",
+            files_indexed=result["files_indexed"],
+            chunks_indexed=result["chunks_indexed"],
+            indexing_time_ms=result["indexing_time_ms"],
+            error=None,
+            completed_at=current_timestamp()
+        )
+
+    except Exception as error:
+        repo_status["status"] = "failed"
+        repo_status["error"] = str(error)
+
+        update_job(
+            job_id,
+            status="failed",
+            error=str(error),
+            completed_at=current_timestamp()
+        )
+
 
 @app.get("/")
 def root():
     return {
         "message": "RepoPilot AI backend is running",
-        "version": "0.3.0",
+        "version": "0.5.0",
         "status": repo_status
     }
 
 
 @app.post("/index")
 def index_repository(request: IndexRequest):
-    start_time = time.time()
+    if repo_status["status"] == "indexing":
+        raise HTTPException(
+            status_code=409,
+            detail="Another repository is currently being indexed."
+        )
 
     repo_status["status"] = "indexing"
     repo_status["repo_url"] = request.repo_url
@@ -52,36 +173,75 @@ def index_repository(request: IndexRequest):
     repo_status["error"] = None
 
     try:
-        repo_path = clone_repository(request.repo_url)
-
-        files = parse_repository(repo_path)
-        keyword_search_engine.index_files(files)
-
-        chunks = chunk_files(files)
-
-        semantic_vector_store.reset()
-        chunks_indexed = semantic_vector_store.index_chunks(chunks)
-
-        elapsed_ms = int((time.time() - start_time) * 1000)
+        result = perform_indexing(request.repo_url)
 
         repo_status["status"] = "completed"
-        repo_status["files_indexed"] = len(files)
-        repo_status["chunks_indexed"] = chunks_indexed
-        repo_status["indexing_time_ms"] = elapsed_ms
+        repo_status["files_indexed"] = result["files_indexed"]
+        repo_status["chunks_indexed"] = result["chunks_indexed"]
+        repo_status["indexing_time_ms"] = result["indexing_time_ms"]
+        repo_status["error"] = None
 
-        return {
-            "message": "Repository indexed successfully",
-            "repo_url": request.repo_url,
-            "files_indexed": len(files),
-            "chunks_indexed": chunks_indexed,
-            "indexing_time_ms": elapsed_ms
-        }
+        return result
 
     except Exception as error:
         repo_status["status"] = "failed"
         repo_status["error"] = str(error)
 
         raise HTTPException(status_code=500, detail=str(error))
+
+
+@app.post("/index-job")
+def start_indexing_job(request: IndexRequest, background_tasks: BackgroundTasks):
+    if repo_status["status"] == "indexing":
+        raise HTTPException(
+            status_code=409,
+            detail="Another repository is currently being indexed."
+        )
+
+    job = create_indexing_job(request.repo_url)
+
+    repo_status["status"] = "indexing"
+    repo_status["repo_url"] = request.repo_url
+    repo_status["files_indexed"] = 0
+    repo_status["chunks_indexed"] = 0
+    repo_status["indexing_time_ms"] = 0
+    repo_status["error"] = None
+
+    background_tasks.add_task(run_indexing_job, job["job_id"], request.repo_url)
+
+    return {
+        "message": "Indexing job started",
+        "job_id": job["job_id"],
+        "repo_url": request.repo_url,
+        "status": job["status"],
+        "status_url": f"/jobs/{job['job_id']}"
+    }
+
+
+@app.get("/jobs/{job_id}")
+def get_indexing_job(job_id: str):
+    job = get_job(job_id)
+
+    if job is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Indexing job not found."
+        )
+
+    return job
+
+
+@app.get("/jobs")
+def list_indexing_jobs():
+    with jobs_lock:
+        jobs = list(indexing_jobs.values())
+
+    jobs.sort(key=lambda item: item["created_at"], reverse=True)
+
+    return {
+        "total_jobs": len(jobs),
+        "jobs": jobs
+    }
 
 
 @app.post("/search")
