@@ -1,8 +1,8 @@
 # RepoPilot AI
 
-RepoPilot AI is a FastAPI-based codebase intelligence system that indexes public GitHub repositories and answers developer questions using keyword search, semantic search, and RAG-based answer generation.
+RepoPilot AI is a FastAPI-based codebase intelligence system that indexes public GitHub repositories and answers developer questions using keyword search, semantic search, RAG-based answer generation, and background indexing jobs.
 
-The project helps developers understand unfamiliar repositories, locate relevant files, and debug code faster using repository parsing, code chunking, embeddings, vector search, Groq-powered grounded answers, and an interactive Streamlit dashboard.
+The project helps developers understand unfamiliar repositories, locate relevant files, and debug code faster using repository parsing, code chunking, embeddings, vector search, Groq-powered grounded answers, asynchronous job tracking, and an interactive Streamlit dashboard.
 
 ## Current Features
 
@@ -19,6 +19,12 @@ The project helps developers understand unfamiliar repositories, locate relevant
 * Supports RAG-based question answering through `/ask`
 * Uses semantic retrieval over indexed code chunks before generating answers
 * Generates grounded answers using Groq LLM with relevant file references
+* Supports synchronous repository indexing through `/index`
+* Supports background indexing jobs through `/index-job`
+* Provides job tracking through `/jobs/{job_id}`
+* Provides job history through `/jobs`
+* Tracks job status as `pending`, `running`, `completed`, or `failed`
+* Tracks job metadata including `created_at`, `started_at`, and `completed_at`
 * Provides an interactive Streamlit dashboard for repository indexing, keyword search, semantic search, and RAG-based question answering
 * Displays files indexed, chunks indexed, indexing time, query latency, answer latency, generated answers, and source file references
 * Tracks repository indexing status, files indexed, chunks indexed, indexing time, and errors
@@ -38,6 +44,9 @@ The project helps developers understand unfamiliar repositories, locate relevant
 * RAG
 * Streamlit
 * Requests
+* BackgroundTasks
+* Threading
+* UUID-based job tracking
 
 ## Project Structure
 
@@ -68,7 +77,9 @@ RepoPilot-AI/
 │   ├── ask-success.png
 │   ├── dashboard-index.png
 │   ├── dashboard-search.png
-│   └── dashboard-rag.png
+│   ├── dashboard-rag.png
+│   ├── index-job-started.png
+│   └── job-status-completed.png
 │
 ├── .env.example
 ├── .gitignore
@@ -101,7 +112,25 @@ Retrieve relevant chunks using semantic search
         ↓
 Generate grounded answers using Groq LLM
         ↓
-Display results in Swagger UI or Streamlit dashboard
+Return answer with source file references
+```
+
+For background indexing, the workflow becomes:
+
+```text
+POST /index-job
+        ↓
+Create job_id
+        ↓
+Return response immediately
+        ↓
+Run indexing in background
+        ↓
+Update job status
+        ↓
+GET /jobs/{job_id}
+        ↓
+Check pending/running/completed/failed status
 ```
 
 ## File Parsing
@@ -197,6 +226,30 @@ Example RAG question:
 Where is synchronization handled in this project?
 ```
 
+## Background Indexing Jobs
+
+RepoPilot AI supports background indexing jobs for a more scalable and production-like workflow.
+
+Instead of waiting for repository indexing to complete in the same request, `/index-job` returns a `job_id` immediately. The indexing process then runs in the background, and the client can poll `/jobs/{job_id}` to check progress.
+
+This demonstrates:
+
+* Asynchronous backend workflow
+* Job tracking
+* Status polling
+* Error reporting
+* System reliability design
+* Backend state management
+
+Job statuses:
+
+```text
+pending   → job has been created
+running   → repository indexing is in progress
+completed → repository indexing completed successfully
+failed    → repository indexing failed
+```
+
 ## Streamlit Dashboard
 
 RepoPilot AI includes a Streamlit dashboard for using the system through a simple interface instead of only Swagger API calls.
@@ -223,7 +276,7 @@ Example response:
 ```json
 {
   "message": "RepoPilot AI backend is running",
-  "version": "0.3.0",
+  "version": "0.5.0",
   "status": {
     "status": "idle",
     "repo_url": null,
@@ -237,7 +290,7 @@ Example response:
 
 ### `POST /index`
 
-Indexes a public GitHub repository.
+Indexes a public GitHub repository synchronously.
 
 Request body:
 
@@ -256,6 +309,77 @@ Example response:
   "files_indexed": 6,
   "chunks_indexed": 29,
   "indexing_time_ms": 5530
+}
+```
+
+### `POST /index-job`
+
+Starts repository indexing as a background job and returns a `job_id` immediately.
+
+Request body:
+
+```json
+{
+  "repo_url": "https://github.com/Palak123-coder/MiniSearchX"
+}
+```
+
+Example response:
+
+```json
+{
+  "message": "Indexing job started",
+  "job_id": "ebf3db6c-749f-45cb-bca1-b70b17eb3882",
+  "repo_url": "https://github.com/Palak123-coder/MiniSearchX",
+  "status": "pending",
+  "status_url": "/jobs/ebf3db6c-749f-45cb-bca1-b70b17eb3882"
+}
+```
+
+### `GET /jobs/{job_id}`
+
+Returns the status and metadata of a specific indexing job.
+
+Example response:
+
+```json
+{
+  "job_id": "ebf3db6c-749f-45cb-bca1-b70b17eb3882",
+  "repo_url": "https://github.com/Palak123-coder/MiniSearchX",
+  "status": "completed",
+  "files_indexed": 6,
+  "chunks_indexed": 29,
+  "indexing_time_ms": 5176,
+  "error": null,
+  "created_at": "2026-06-25T13:52:51.372864Z",
+  "started_at": "2026-06-25T13:52:51.374285Z",
+  "completed_at": "2026-06-25T13:52:56.550375Z"
+}
+```
+
+### `GET /jobs`
+
+Returns all indexing jobs stored during the current backend session.
+
+Example response:
+
+```json
+{
+  "total_jobs": 1,
+  "jobs": [
+    {
+      "job_id": "ebf3db6c-749f-45cb-bca1-b70b17eb3882",
+      "repo_url": "https://github.com/Palak123-coder/MiniSearchX",
+      "status": "completed",
+      "files_indexed": 6,
+      "chunks_indexed": 29,
+      "indexing_time_ms": 5176,
+      "error": null,
+      "created_at": "2026-06-25T13:52:51.372864Z",
+      "started_at": "2026-06-25T13:52:51.374285Z",
+      "completed_at": "2026-06-25T13:52:56.550375Z"
+    }
+  ]
 }
 ```
 
@@ -348,18 +472,18 @@ Example response:
   "answer_type": "rag",
   "question": "Where is synchronization handled in this project?",
   "top_k": 5,
-  "answer_latency_ms": 490,
-  "answer": "Based on the retrieved context, synchronization is handled using Windows Critical Sections. This prevents multiple threads from writing to the shared data structure at the same time, avoiding race conditions and maintaining correctness during parallel indexing.",
+  "answer_latency_ms": 815,
+  "answer": "Based on the retrieved context, synchronization is handled using Windows Critical Sections. The project uses Windows Critical Sections to prevent multiple threads from writing to the shared data structure at the same time, avoiding race conditions and maintaining correctness during parallel indexing.",
   "sources": [
     {
-      "path": "README.md",
-      "chunk_index": 4,
-      "distance": 1.6006269454956055
+      "path": "data\\doc3.txt",
+      "chunk_index": 0,
+      "distance": 1.031865119934082
     },
     {
-      "path": "src\\main.cpp",
-      "chunk_index": 6,
-      "distance": 1.600897687911987
+      "path": "README.md",
+      "chunk_index": 1,
+      "distance": 1.4639391899108887
     }
   ]
 }
@@ -377,7 +501,7 @@ Example response:
   "repo_url": "https://github.com/Palak123-coder/MiniSearchX",
   "files_indexed": 6,
   "chunks_indexed": 29,
-  "indexing_time_ms": 5530,
+  "indexing_time_ms": 5176,
   "error": null
 }
 ```
@@ -418,8 +542,6 @@ GROQ_API_KEY=your_actual_groq_api_key_here
 GROQ_MODEL=llama-3.1-8b-instant
 ```
 
-Do not push `.env` to GitHub. Use `.env.example` as the reference template.
-
 ### 6. Run the FastAPI backend
 
 ```powershell
@@ -456,9 +578,9 @@ http://localhost:8501
 
 ## Example Usage
 
-### Step 1: Index a repository
+### Step 1: Start a background indexing job
 
-Use `POST /index` or the Streamlit dashboard with:
+Use `POST /index-job` with:
 
 ```json
 {
@@ -466,7 +588,25 @@ Use `POST /index` or the Streamlit dashboard with:
 }
 ```
 
-### Step 2: Run keyword search
+The API returns a `job_id`.
+
+### Step 2: Check job status
+
+Use `GET /jobs/{job_id}`.
+
+Example completed response:
+
+```json
+{
+  "status": "completed",
+  "files_indexed": 6,
+  "chunks_indexed": 29,
+  "indexing_time_ms": 5176,
+  "error": null
+}
+```
+
+### Step 3: Run keyword search
 
 Use `POST /search` or the Streamlit dashboard with:
 
@@ -477,7 +617,7 @@ Use `POST /search` or the Streamlit dashboard with:
 }
 ```
 
-### Step 3: Run semantic search
+### Step 4: Run semantic search
 
 Use `POST /semantic-search` or the Streamlit dashboard with:
 
@@ -488,7 +628,7 @@ Use `POST /semantic-search` or the Streamlit dashboard with:
 }
 ```
 
-### Step 4: Ask a RAG question
+### Step 5: Ask a RAG question
 
 Use `POST /ask` or the Streamlit dashboard with:
 
@@ -501,15 +641,15 @@ Use `POST /ask` or the Streamlit dashboard with:
 
 ## Current Demo Metrics
 
-RepoPilot AI successfully indexed the MiniSearchX repository and returned keyword search, semantic search, and RAG answer-generation results.
+RepoPilot AI successfully indexed the MiniSearchX repository and returned keyword search, semantic search, RAG answer-generation, and background job tracking results.
 
 ```text
 Files indexed: 6
 Chunks indexed: 29
-Indexing time: 5530 ms
+Background indexing time: 5176 ms
 Keyword query latency: 1 ms
 Semantic query latency: 45 ms
-RAG answer latency: 490 ms
+RAG answer latency: 815 ms
 ```
 
 ## Demo Screenshots
@@ -538,9 +678,17 @@ RAG answer latency: 490 ms
 
 ![Dashboard RAG](screenshots/dashboard-rag.png)
 
+### Background Job Started
+
+![Index Job Started](screenshots/index-job-started.png)
+
+### Background Job Completed
+
+![Job Status Completed](screenshots/job-status-completed.png)
+
 ## Current Status
 
-This is version `0.4.0`.
+This is version `0.5.0`.
 
 Completed:
 
@@ -555,6 +703,12 @@ Completed:
 * RAG-based answer generation
 * Groq LLM integration
 * Grounded answers with source file references
+* Background indexing jobs
+* UUID-based job IDs
+* Job-status polling
+* Job history for current backend session
+* Job timestamps
+* Error tracking for failed jobs
 * Streamlit dashboard
 * Snippet extraction
 * Indexing-status tracking
@@ -566,17 +720,19 @@ Completed:
 ## Current Limitations
 
 * Supports one indexed repository at a time
-* Indexing currently runs synchronously
-* No background worker queue yet
-* No persistent job history yet
+* Background job history is stored in memory and resets when the backend restarts
+* No persistent database for job history yet
+* No background worker queue like Celery or Redis yet
 * No authentication for private repositories yet
 * No Docker setup yet
 * No unit tests yet
 
 ## Upcoming Improvements
 
-* Add background indexing jobs
+* Update Streamlit dashboard to start `/index-job` and poll `/jobs/{job_id}`
+* Add persistent job storage using SQLite or PostgreSQL
 * Add retry handling and failed-job logs
+* Add Celery/Redis-based background workers
 * Add Docker support
 * Add unit tests
 * Add repository summary generation
