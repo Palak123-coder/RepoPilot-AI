@@ -717,15 +717,6 @@ Completed:
 * FastAPI Swagger documentation
 * Demo screenshots
 
-## Current Limitations
-
-* Supports one indexed repository at a time
-* Background job history is stored in memory and resets when the backend restarts
-* No persistent database for job history yet
-* No background worker queue like Celery or Redis yet
-* No authentication for private repositories yet
-* No Docker setup yet
-* No unit tests yet
 
 ## Upcoming Improvements
 
