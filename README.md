@@ -53,9 +53,13 @@ RepoPilot-AI/
 │   └── rag_agent.py
 │
 ├── data/
+│   ├── .gitkeep
 │   └── cloned_repos/
 │
 ├── screenshots/
+│   ├── index-success.png
+│   ├── semantic-search-success.png
+│   └── ask-success.png
 │
 ├── .env.example
 ├── .gitignore
@@ -225,7 +229,7 @@ Example response:
   "repo_url": "https://github.com/Palak123-coder/MiniSearchX",
   "files_indexed": 6,
   "chunks_indexed": 29,
-  "indexing_time_ms": 5558
+  "indexing_time_ms": 6588
 }
 ```
 
@@ -268,7 +272,7 @@ Request body:
 
 ```json
 {
-  "query": "Where is synchronization handled?",
+  "query": "Where is synchronization handled in this project?",
   "top_k": 5
 }
 ```
@@ -278,20 +282,20 @@ Example response:
 ```json
 {
   "search_type": "semantic",
-  "query": "Where is synchronization handled?",
+  "query": "Where is synchronization handled in this project?",
   "top_k": 5,
-  "query_latency_ms": 68,
+  "query_latency_ms": 69,
   "results": [
     {
       "path": "data\\doc3.txt",
       "chunk_index": 0,
-      "distance": 0.9319181442260742,
+      "distance": 1.031865119934082,
       "snippet": "Operating systems use threads, synchronization, mutexes, and scheduling for concurrent execution."
     },
     {
       "path": "README.md",
       "chunk_index": 1,
-      "distance": 1.4494549798965454,
+      "distance": 1.4639391899108887,
       "snippet": "Tech Stack\\n\\n- C++\\n- STL\\n- Hash Maps\\n- Priority Queue\\n- File I/O\\n- TF-IDF Ranking\\n- BM25 Ranking\\n- Windows Threads\\n- Critical Sections for Synchronization..."
     }
   ]
@@ -318,18 +322,18 @@ Example response:
   "answer_type": "rag",
   "question": "Where is synchronization handled in this project?",
   "top_k": 5,
-  "answer_latency_ms": 1200,
-  "answer": "Synchronization is handled using Windows Critical Sections. The shared inverted index is updated inside a synchronized critical section to prevent race conditions while multiple worker threads index documents in parallel.",
+  "answer_latency_ms": 1090,
+  "answer": "Based on the retrieved repository context, synchronization is handled using Windows Critical Sections. The project uses Critical Sections to prevent multiple threads from writing to the shared data structure at the same time, avoiding race conditions and maintaining correctness during parallel indexing.",
   "sources": [
-    {
-      "path": "src\\main.cpp",
-      "chunk_index": 6,
-      "distance": 1.600897687911987
-    },
     {
       "path": "README.md",
       "chunk_index": 4,
       "distance": 1.6006269454956055
+    },
+    {
+      "path": "src\\main.cpp",
+      "chunk_index": 6,
+      "distance": 1.600897687911987
     }
   ]
 }
@@ -347,7 +351,7 @@ Example response:
   "repo_url": "https://github.com/Palak123-coder/MiniSearchX",
   "files_indexed": 6,
   "chunks_indexed": 29,
-  "indexing_time_ms": 5558,
+  "indexing_time_ms": 6588,
   "error": null
 }
 ```
@@ -439,7 +443,7 @@ Use `POST /semantic-search` with:
 
 ```json
 {
-  "query": "Where is synchronization handled?",
+  "query": "Where is synchronization handled in this project?",
   "top_k": 5
 }
 ```
@@ -462,11 +466,25 @@ RepoPilot AI successfully indexed the MiniSearchX repository and returned keywor
 ```text
 Files indexed: 6
 Chunks indexed: 29
-Indexing time: 5558 ms
+Indexing time: 6588 ms
 Keyword query latency: 2 ms
-Semantic query latency: 68 ms
-RAG answer generation: enabled
+Semantic query latency: 69 ms
+RAG answer latency: 1090 ms
 ```
+
+## Demo Screenshots
+
+### Repository Indexing
+
+![Index Success](screenshots/index-success.png)
+
+### Semantic Search
+
+![Semantic Search Success](screenshots/semantic-search-success.png)
+
+### RAG Answer Generation
+
+![Ask Success](screenshots/ask-success.png)
 
 ## Current Status
 
@@ -489,6 +507,7 @@ Completed:
 * Indexing-status tracking
 * Query-latency reporting
 * FastAPI Swagger documentation
+* Demo screenshots
 
 ## Current Limitations
 
