@@ -2,7 +2,7 @@
 
 RepoPilot AI is a FastAPI-based codebase intelligence system that indexes public GitHub repositories and answers developer questions using keyword search, semantic search, RAG-based answer generation, background indexing jobs, and an interactive Streamlit dashboard.
 
-The project helps developers understand unfamiliar repositories, locate relevant files, and debug code faster using repository parsing, code chunking, embeddings, vector search, Groq-powered grounded answers, asynchronous job tracking, live job-status polling, and source file references.
+The project helps developers understand unfamiliar repositories, locate relevant files, and debug code faster using repository parsing, code chunking, embeddings, vector search, Groq-powered grounded answers, asynchronous job tracking, live job-status polling, source file references, and tested core workflows.
 
 ## Features
 
@@ -30,6 +30,7 @@ The project helps developers understand unfamiliar repositories, locate relevant
 * Displays live job status, job ID, files indexed, chunks indexed, and indexing time
 * Displays query latency, answer latency, generated answers, and source file references
 * Tracks repository indexing status, files indexed, chunks indexed, indexing time, and errors
+* Includes unit tests for chunking, repository parsing, ignored-folder filtering, keyword search ranking, and top-K retrieval
 * Exposes API documentation through FastAPI Swagger UI
 
 ## Tech Stack
@@ -49,6 +50,7 @@ The project helps developers understand unfamiliar repositories, locate relevant
 * FastAPI BackgroundTasks
 * Threading
 * UUID-based job tracking
+* Pytest
 
 ## Project Structure
 
@@ -69,6 +71,9 @@ RepoPilot-AI/
 ├── frontend/
 │   └── app.py
 │
+├── tests/
+│   └── test_core.py
+│
 ├── data/
 │   ├── .gitkeep
 │   └── cloned_repos/
@@ -86,6 +91,7 @@ RepoPilot-AI/
 │
 ├── .env.example
 ├── .gitignore
+├── pytest.ini
 ├── README.md
 └── requirements.txt
 ```
@@ -274,6 +280,32 @@ The dashboard supports:
 * RAG-based question answering
 * Answer latency display
 * Source file references table
+
+## Unit Testing
+
+RepoPilot AI includes unit tests for core workflows using Pytest.
+
+The tests cover:
+
+* Text chunking behavior
+* File-level chunk generation
+* Repository parsing
+* Supported file detection
+* Ignored-folder filtering
+* Keyword search ranking
+* Top-K retrieval behavior
+
+Run tests with:
+
+```powershell
+python -m pytest -v
+```
+
+Latest test result:
+
+```text
+5 passed in 0.11s
+```
 
 ## API Endpoints
 
@@ -552,6 +584,7 @@ GROQ_API_KEY=your_actual_groq_api_key_here
 GROQ_MODEL=llama-3.1-8b-instant
 ```
 
+
 ### 6. Run the FastAPI backend
 
 ```powershell
@@ -584,6 +617,12 @@ Then open the Streamlit local URL shown in the terminal, usually:
 
 ```text
 http://localhost:8501
+```
+
+### 9. Run tests
+
+```powershell
+python -m pytest -v
 ```
 
 ## Example Usage
@@ -683,7 +722,7 @@ Use `POST /ask` or the Streamlit dashboard with:
 
 ## Current Demo Metrics
 
-RepoPilot AI successfully indexed the MiniSearchX repository and returned keyword search, semantic search, RAG answer-generation, background job tracking, and live Streamlit job-status results.
+RepoPilot AI successfully indexed the MiniSearchX repository and returned keyword search, semantic search, RAG answer-generation, background job tracking, live Streamlit job-status results, and passing unit tests.
 
 ```text
 Files indexed: 6
@@ -692,6 +731,7 @@ Background indexing time: 6091 ms
 Keyword query latency: 1 ms
 Semantic query latency: 45 ms
 RAG answer latency: 815 ms
+Unit tests: 5 passed
 ```
 
 ## Demo Screenshots
@@ -732,10 +772,9 @@ RAG answer latency: 815 ms
 
 ![Dashboard Job Status](screenshots/dashboard-job-status.png)
 
-## Current Status
+## Status
 
 This is version `0.5.0`.
-
 
 * GitHub repository cloning
 * Source-file parsing
@@ -757,6 +796,8 @@ This is version `0.5.0`.
 * Streamlit dashboard
 * Live job-status polling in Streamlit dashboard
 * Dashboard support for `/index-job` and `/jobs/{job_id}`
+* Unit tests for core workflows
+* Tests for chunking, file parsing, ignored-folder filtering, keyword ranking, and top-K behavior
 * Snippet extraction
 * Indexing-status tracking
 * Query-latency reporting
@@ -771,7 +812,6 @@ This is version `0.5.0`.
 * Add retry handling and failed-job logs
 * Add Celery/Redis-based background workers
 * Add Docker support
-* Add unit tests
 * Add repository summary generation
 * Add architecture explanation endpoint
 * Add bug-triage suggestions based on retrieved code chunks
