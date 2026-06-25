@@ -2,7 +2,7 @@
 
 RepoPilot AI is a FastAPI-based codebase intelligence system that indexes public GitHub repositories and answers developer questions using keyword search, semantic search, and RAG-based answer generation.
 
-The project helps developers understand unfamiliar repositories, locate relevant files, and debug code faster using repository parsing, code chunking, embeddings, vector search, and Groq-powered grounded answers.
+The project helps developers understand unfamiliar repositories, locate relevant files, and debug code faster using repository parsing, code chunking, embeddings, vector search, Groq-powered grounded answers, and an interactive Streamlit dashboard.
 
 ## Current Features
 
@@ -19,7 +19,8 @@ The project helps developers understand unfamiliar repositories, locate relevant
 * Supports RAG-based question answering through `/ask`
 * Uses semantic retrieval over indexed code chunks before generating answers
 * Generates grounded answers using Groq LLM with relevant file references
-* Returns file paths, chunk indexes, distance scores, snippets, and query latency
+* Provides an interactive Streamlit dashboard for repository indexing, keyword search, semantic search, and RAG-based question answering
+* Displays files indexed, chunks indexed, indexing time, query latency, answer latency, generated answers, and source file references
 * Tracks repository indexing status, files indexed, chunks indexed, indexing time, and errors
 * Exposes API documentation through FastAPI Swagger UI
 
@@ -35,6 +36,8 @@ The project helps developers understand unfamiliar repositories, locate relevant
 * SentenceTransformers
 * Groq API
 * RAG
+* Streamlit
+* Requests
 
 ## Project Structure
 
@@ -52,6 +55,9 @@ RepoPilot-AI/
 │   ├── vector_store.py
 │   └── rag_agent.py
 │
+├── frontend/
+│   └── app.py
+│
 ├── data/
 │   ├── .gitkeep
 │   └── cloned_repos/
@@ -59,7 +65,10 @@ RepoPilot-AI/
 ├── screenshots/
 │   ├── index-success.png
 │   ├── semantic-search-success.png
-│   └── ask-success.png
+│   ├── ask-success.png
+│   ├── dashboard-index.png
+│   ├── dashboard-search.png
+│   └── dashboard-rag.png
 │
 ├── .env.example
 ├── .gitignore
@@ -91,6 +100,8 @@ Store embeddings in ChromaDB
 Retrieve relevant chunks using semantic search
         ↓
 Generate grounded answers using Groq LLM
+        ↓
+Display results in Swagger UI or Streamlit dashboard
 ```
 
 ## File Parsing
@@ -163,7 +174,7 @@ This allows RepoPilot AI to find relevant code even when the query does not exac
 Example semantic query:
 
 ```text
-Where is synchronization handled?
+Where is synchronization handled in this project?
 ```
 
 ## RAG Answer Generation
@@ -185,6 +196,21 @@ Example RAG question:
 ```text
 Where is synchronization handled in this project?
 ```
+
+## Streamlit Dashboard
+
+RepoPilot AI includes a Streamlit dashboard for using the system through a simple interface instead of only Swagger API calls.
+
+The dashboard supports:
+
+* Repository URL input
+* Repository indexing button
+* Files indexed, chunks indexed, and indexing-time metrics
+* Keyword search with ranked results
+* Semantic search with chunk-level results
+* RAG-based question answering
+* Answer latency display
+* Source file references table
 
 ## API Endpoints
 
@@ -229,7 +255,7 @@ Example response:
   "repo_url": "https://github.com/Palak123-coder/MiniSearchX",
   "files_indexed": 6,
   "chunks_indexed": 29,
-  "indexing_time_ms": 6588
+  "indexing_time_ms": 5530
 }
 ```
 
@@ -253,7 +279,7 @@ Example response:
   "search_type": "keyword",
   "query": "multithreading synchronization",
   "top_k": 5,
-  "query_latency_ms": 2,
+  "query_latency_ms": 1,
   "results": [
     {
       "path": "README.md",
@@ -284,7 +310,7 @@ Example response:
   "search_type": "semantic",
   "query": "Where is synchronization handled in this project?",
   "top_k": 5,
-  "query_latency_ms": 69,
+  "query_latency_ms": 45,
   "results": [
     {
       "path": "data\\doc3.txt",
@@ -322,8 +348,8 @@ Example response:
   "answer_type": "rag",
   "question": "Where is synchronization handled in this project?",
   "top_k": 5,
-  "answer_latency_ms": 1090,
-  "answer": "Based on the retrieved repository context, synchronization is handled using Windows Critical Sections. The project uses Critical Sections to prevent multiple threads from writing to the shared data structure at the same time, avoiding race conditions and maintaining correctness during parallel indexing.",
+  "answer_latency_ms": 490,
+  "answer": "Based on the retrieved context, synchronization is handled using Windows Critical Sections. This prevents multiple threads from writing to the shared data structure at the same time, avoiding race conditions and maintaining correctness during parallel indexing.",
   "sources": [
     {
       "path": "README.md",
@@ -351,7 +377,7 @@ Example response:
   "repo_url": "https://github.com/Palak123-coder/MiniSearchX",
   "files_indexed": 6,
   "chunks_indexed": 29,
-  "indexing_time_ms": 6588,
+  "indexing_time_ms": 5530,
   "error": null
 }
 ```
@@ -392,7 +418,9 @@ GROQ_API_KEY=your_actual_groq_api_key_here
 GROQ_MODEL=llama-3.1-8b-instant
 ```
 
-### 6. Run the backend
+Do not push `.env` to GitHub. Use `.env.example` as the reference template.
+
+### 6. Run the FastAPI backend
 
 ```powershell
 uvicorn backend.main:app
@@ -412,11 +440,25 @@ Open this URL in your browser:
 http://127.0.0.1:8000/docs
 ```
 
+### 8. Run the Streamlit dashboard
+
+Open a new terminal, activate the virtual environment again, and run:
+
+```powershell
+streamlit run frontend/app.py
+```
+
+Then open the Streamlit local URL shown in the terminal, usually:
+
+```text
+http://localhost:8501
+```
+
 ## Example Usage
 
 ### Step 1: Index a repository
 
-Use `POST /index` with:
+Use `POST /index` or the Streamlit dashboard with:
 
 ```json
 {
@@ -426,7 +468,7 @@ Use `POST /index` with:
 
 ### Step 2: Run keyword search
 
-Use `POST /search` with:
+Use `POST /search` or the Streamlit dashboard with:
 
 ```json
 {
@@ -437,7 +479,7 @@ Use `POST /search` with:
 
 ### Step 3: Run semantic search
 
-Use `POST /semantic-search` with:
+Use `POST /semantic-search` or the Streamlit dashboard with:
 
 ```json
 {
@@ -448,7 +490,7 @@ Use `POST /semantic-search` with:
 
 ### Step 4: Ask a RAG question
 
-Use `POST /ask` with:
+Use `POST /ask` or the Streamlit dashboard with:
 
 ```json
 {
@@ -464,10 +506,10 @@ RepoPilot AI successfully indexed the MiniSearchX repository and returned keywor
 ```text
 Files indexed: 6
 Chunks indexed: 29
-Indexing time: 6588 ms
-Keyword query latency: 2 ms
-Semantic query latency: 69 ms
-RAG answer latency: 1090 ms
+Indexing time: 5530 ms
+Keyword query latency: 1 ms
+Semantic query latency: 45 ms
+RAG answer latency: 490 ms
 ```
 
 ## Demo Screenshots
@@ -484,9 +526,21 @@ RAG answer latency: 1090 ms
 
 ![Ask Success](screenshots/ask-success.png)
 
+### Streamlit Dashboard - Repository Indexing
+
+![Dashboard Index](screenshots/dashboard-index.png)
+
+### Streamlit Dashboard - Search
+
+![Dashboard Search](screenshots/dashboard-search.png)
+
+### Streamlit Dashboard - RAG Answering
+
+![Dashboard RAG](screenshots/dashboard-rag.png)
+
 ## Current Status
 
-This is version `0.3.0`.
+This is version `0.4.0`.
 
 Completed:
 
@@ -501,16 +555,18 @@ Completed:
 * RAG-based answer generation
 * Groq LLM integration
 * Grounded answers with source file references
+* Streamlit dashboard
 * Snippet extraction
 * Indexing-status tracking
 * Query-latency reporting
+* Answer-latency reporting
 * FastAPI Swagger documentation
 * Demo screenshots
 
 ## Current Limitations
 
 * Supports one indexed repository at a time
-* No frontend dashboard yet
+* Indexing currently runs synchronously
 * No background worker queue yet
 * No persistent job history yet
 * No authentication for private repositories yet
@@ -519,7 +575,6 @@ Completed:
 
 ## Upcoming Improvements
 
-* Add Streamlit dashboard
 * Add background indexing jobs
 * Add retry handling and failed-job logs
 * Add Docker support
