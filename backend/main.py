@@ -18,6 +18,7 @@ from backend.job_store import (
 from backend.models import (
     ArchitectureRequest,
     AskRequest,
+    BugTriageRequest,
     IndexRequest,
     RepoSummaryRequest,
     SearchRequest,
@@ -35,7 +36,7 @@ RETRY_DELAY_SECONDS = 2
 app = FastAPI(
     title="RepoPilot AI",
     description="Agentic codebase search and bug triage system",
-    version="0.9.0",
+    version="1.0.0",
 )
 
 init_job_store()
@@ -182,7 +183,7 @@ def run_indexing_job(job_id: str, repo_url: str):
 def root():
     return {
         "message": "RepoPilot AI backend is running",
-        "version": "0.9.0",
+        "version": "1.0.0",
         "status": repo_status,
     }
 
@@ -398,6 +399,49 @@ def explain_repository_architecture(request: ArchitectureRequest):
             "architecture_latency_ms": elapsed_ms,
             "architecture": architecture_response["architecture"],
             "sources": architecture_response["sources"],
+        }
+
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=str(error))
+
+
+@app.post("/bug-triage")
+def triage_repository_bug(request: BugTriageRequest):
+    start_time = time.time()
+
+    if repo_status["status"] != "completed":
+        raise HTTPException(
+            status_code=400,
+            detail="No repository indexed yet. Please index a repository first.",
+        )
+
+    try:
+        triage_query = (
+            f"{request.bug_description} "
+            "bug error failure exception issue debug fix cause relevant files "
+            "implementation flow function class API endpoint configuration"
+        )
+
+        retrieved_chunks = semantic_vector_store.semantic_search(
+            triage_query,
+            request.top_k,
+        )
+
+        triage_response = rag_agent.triage_bug(
+            request.bug_description,
+            retrieved_chunks,
+        )
+
+        elapsed_ms = int((time.time() - start_time) * 1000)
+
+        return {
+            "answer_type": "bug_triage",
+            "repo_url": repo_status["repo_url"],
+            "bug_description": request.bug_description,
+            "top_k": request.top_k,
+            "triage_latency_ms": elapsed_ms,
+            "triage": triage_response["triage"],
+            "sources": triage_response["sources"],
         }
 
     except Exception as error:

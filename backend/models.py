@@ -26,3 +26,9 @@ class RepoSummaryRequest(BaseModel):
 
 class ArchitectureRequest(BaseModel):
     top_k: int = 10
+
+
+class BugTriageRequest(BaseModel):
+    bug_description: str
+    top_k: int = 8
+

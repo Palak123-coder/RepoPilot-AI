@@ -247,3 +247,71 @@ Use only the retrieved context. If a section is not clear from the context, say 
             "architecture": architecture,
             "sources": self.build_sources(retrieved_chunks),
         }
+
+    def triage_bug(self, bug_description: str, retrieved_chunks: List[Dict]) -> Dict:
+        if not retrieved_chunks:
+            return {
+                "triage": (
+                    "I could not generate bug-triage suggestions because no relevant "
+                    "repository chunks were available."
+                ),
+                "sources": [],
+            }
+
+        context = self.build_context(retrieved_chunks)
+
+        system_prompt = """
+You are RepoPilot AI, a senior debugging and bug-triage assistant.
+
+Your job is to triage a bug report using only the retrieved repository context.
+
+Rules:
+1. Ground your triage only in the provided context.
+2. Do not invent files, functions, APIs, classes, database tables, or implementation details.
+3. Mention relevant file paths when suggesting where to inspect.
+4. Separate confirmed evidence from possible causes.
+5. Give practical debugging steps a developer can follow.
+6. If the retrieved context is insufficient, say what is not clearly visible.
+"""
+
+        user_prompt = f"""
+Bug report:
+{bug_description}
+
+Retrieved repository context:
+{context}
+
+Generate source-backed bug triage with these sections:
+
+1. Bug Summary
+2. Most Relevant Files
+3. Possible Causes
+4. Debugging Steps
+5. Suggested Fix Direction
+6. What Is Not Clearly Visible From Retrieved Context
+
+Use only the retrieved context.
+"""
+
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": system_prompt.strip(),
+                },
+                {
+                    "role": "user",
+                    "content": user_prompt.strip(),
+                },
+            ],
+            temperature=0.2,
+            max_completion_tokens=1000,
+        )
+
+        triage = response.choices[0].message.content
+
+        return {
+            "triage": triage,
+            "sources": self.build_sources(retrieved_chunks),
+        }

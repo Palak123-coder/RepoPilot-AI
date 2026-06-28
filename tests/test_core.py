@@ -136,3 +136,14 @@ def test_architecture_request_model_defaults():
     request = ArchitectureRequest()
 
     assert request.top_k == 10
+
+
+def test_bug_triage_request_model_defaults():
+    from backend.models import BugTriageRequest
+
+    request = BugTriageRequest(
+        bug_description="Search results are empty after indexing."
+    )
+
+    assert request.bug_description == "Search results are empty after indexing."
+    assert request.top_k == 8
