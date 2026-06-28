@@ -1,12 +1,18 @@
-import threading
 import time
-import uuid
-from datetime import datetime
+from typing import Optional
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 
 from backend.chunker import chunk_files
 from backend.file_parser import parse_repository
+from backend.job_store import (
+    create_indexing_job,
+    current_timestamp,
+    get_job,
+    init_job_store,
+    list_jobs,
+    update_job,
+)
 from backend.models import IndexRequest, SearchRequest, SemanticSearchRequest, AskRequest
 from backend.rag_agent import RAGAgent
 from backend.repo_cloner import clone_repository
@@ -17,8 +23,11 @@ from backend.vector_store import SemanticCodeVectorStore
 app = FastAPI(
     title="RepoPilot AI",
     description="Agentic codebase search and bug triage system",
-    version="0.5.0"
+    version="0.6.0"
 )
+
+# Initialize SQLite job storage
+init_job_store()
 
 keyword_search_engine = SimpleCodeSearchEngine()
 semantic_vector_store = SemanticCodeVectorStore()
@@ -33,50 +42,14 @@ repo_status = {
     "error": None
 }
 
-indexing_jobs = {}
-jobs_lock = threading.Lock()
 
-
-def current_timestamp():
-    return datetime.utcnow().isoformat() + "Z"
-
-
-def update_job(job_id: str, **updates):
-    with jobs_lock:
-        if job_id in indexing_jobs:
-            indexing_jobs[job_id].update(updates)
-
-
-def get_job(job_id: str):
-    with jobs_lock:
-        job = indexing_jobs.get(job_id)
-
-        if job is None:
-            return None
-
-        return dict(job)
-
-
-def create_indexing_job(repo_url: str):
-    job_id = str(uuid.uuid4())
-
-    job = {
-        "job_id": job_id,
-        "repo_url": repo_url,
-        "status": "pending",
-        "files_indexed": 0,
-        "chunks_indexed": 0,
-        "indexing_time_ms": 0,
-        "error": None,
-        "created_at": current_timestamp(),
-        "started_at": None,
-        "completed_at": None
-    }
-
-    with jobs_lock:
-        indexing_jobs[job_id] = job
-
-    return job
+def reset_repo_status_for_indexing(repo_url: str):
+    repo_status["status"] = "indexing"
+    repo_status["repo_url"] = repo_url
+    repo_status["files_indexed"] = 0
+    repo_status["chunks_indexed"] = 0
+    repo_status["indexing_time_ms"] = 0
+    repo_status["error"] = None
 
 
 def perform_indexing(repo_url: str):
@@ -104,17 +77,13 @@ def perform_indexing(repo_url: str):
 
 
 def run_indexing_job(job_id: str, repo_url: str):
-    repo_status["status"] = "indexing"
-    repo_status["repo_url"] = repo_url
-    repo_status["files_indexed"] = 0
-    repo_status["chunks_indexed"] = 0
-    repo_status["indexing_time_ms"] = 0
-    repo_status["error"] = None
+    reset_repo_status_for_indexing(repo_url)
 
     update_job(
         job_id,
         status="running",
-        started_at=current_timestamp()
+        started_at=current_timestamp(),
+        attempts=1
     )
 
     try:
@@ -152,7 +121,7 @@ def run_indexing_job(job_id: str, repo_url: str):
 def root():
     return {
         "message": "RepoPilot AI backend is running",
-        "version": "0.5.0",
+        "version": "0.6.0",
         "status": repo_status
     }
 
@@ -165,12 +134,7 @@ def index_repository(request: IndexRequest):
             detail="Another repository is currently being indexed."
         )
 
-    repo_status["status"] = "indexing"
-    repo_status["repo_url"] = request.repo_url
-    repo_status["files_indexed"] = 0
-    repo_status["chunks_indexed"] = 0
-    repo_status["indexing_time_ms"] = 0
-    repo_status["error"] = None
+    reset_repo_status_for_indexing(request.repo_url)
 
     try:
         result = perform_indexing(request.repo_url)
@@ -200,12 +164,7 @@ def start_indexing_job(request: IndexRequest, background_tasks: BackgroundTasks)
 
     job = create_indexing_job(request.repo_url)
 
-    repo_status["status"] = "indexing"
-    repo_status["repo_url"] = request.repo_url
-    repo_status["files_indexed"] = 0
-    repo_status["chunks_indexed"] = 0
-    repo_status["indexing_time_ms"] = 0
-    repo_status["error"] = None
+    reset_repo_status_for_indexing(request.repo_url)
 
     background_tasks.add_task(run_indexing_job, job["job_id"], request.repo_url)
 
@@ -232,11 +191,8 @@ def get_indexing_job(job_id: str):
 
 
 @app.get("/jobs")
-def list_indexing_jobs():
-    with jobs_lock:
-        jobs = list(indexing_jobs.values())
-
-    jobs.sort(key=lambda item: item["created_at"], reverse=True)
+def list_indexing_jobs(status: Optional[str] = None, limit: int = 50):
+    jobs = list_jobs(status=status, limit=limit)
 
     return {
         "total_jobs": len(jobs),
