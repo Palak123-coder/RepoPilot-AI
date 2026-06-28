@@ -1,5 +1,5 @@
 import os
-from typing import List, Dict
+from typing import Dict, List
 
 from dotenv import load_dotenv
 from groq import Groq
@@ -39,7 +39,6 @@ class RAGAgent:
 
     def build_sources(self, retrieved_chunks: List[Dict]) -> List[Dict]:
         sources = []
-
         seen = set()
 
         for chunk in retrieved_chunks:
@@ -52,11 +51,13 @@ class RAGAgent:
 
             seen.add(key)
 
-            sources.append({
-                "path": path,
-                "chunk_index": chunk_index,
-                "distance": chunk.get("distance")
-            })
+            sources.append(
+                {
+                    "path": path,
+                    "chunk_index": chunk_index,
+                    "distance": chunk.get("distance"),
+                }
+            )
 
         return sources
 
@@ -67,7 +68,7 @@ class RAGAgent:
                     "I could not find enough relevant information in the indexed repository "
                     "to answer this question."
                 ),
-                "sources": []
+                "sources": [],
             }
 
         context = self.build_context(retrieved_chunks)
@@ -100,20 +101,93 @@ Answer the question using the retrieved context. Include a short "Relevant files
             messages=[
                 {
                     "role": "system",
-                    "content": system_prompt.strip()
+                    "content": system_prompt.strip(),
                 },
                 {
                     "role": "user",
-                    "content": user_prompt.strip()
-                }
+                    "content": user_prompt.strip(),
+                },
             ],
             temperature=0.2,
-            max_completion_tokens=700
+            max_completion_tokens=700,
         )
 
         answer = response.choices[0].message.content
 
         return {
             "answer": answer,
-            "sources": self.build_sources(retrieved_chunks)
+            "sources": self.build_sources(retrieved_chunks),
         }
+
+    def summarize_repository(self, retrieved_chunks: List[Dict]) -> Dict:
+        if not retrieved_chunks:
+            return {
+                "summary": (
+                    "I could not generate a repository summary because no relevant "
+                    "repository chunks were available."
+                ),
+                "sources": [],
+            }
+
+        context = self.build_context(retrieved_chunks)
+
+        system_prompt = """
+You are RepoPilot AI, a repository analysis assistant.
+
+Your job is to summarize an indexed GitHub repository using only the retrieved repository context.
+
+Rules:
+1. Ground the summary only in the provided context.
+2. Do not invent files, libraries, endpoints, features, or architecture.
+3. Mention relevant file paths when useful.
+4. Keep the output structured and useful for a developer exploring the repository.
+5. If some information is unclear, say that it is not visible from the retrieved context.
+"""
+
+        user_prompt = f"""
+Retrieved repository context:
+{context}
+
+Generate a concise repository summary with these sections:
+
+1. Repository Purpose
+2. Main Technologies
+3. Core Features
+4. Important Files or Modules
+5. Architecture / Data Flow
+6. What a New Developer Should Read First
+
+Use only the retrieved context.
+"""
+
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": system_prompt.strip(),
+                },
+                {
+                    "role": "user",
+                    "content": user_prompt.strip(),
+                },
+            ],
+            temperature=0.2,
+            max_completion_tokens=900,
+        )
+
+        summary = response.choices[0].message.content
+
+        return {
+            "summary": summary,
+            "sources": self.build_sources(retrieved_chunks),
+        }
+
+
+
+
+
+
+
+
+

@@ -15,7 +15,13 @@ from backend.job_store import (
     list_jobs,
     update_job,
 )
-from backend.models import IndexRequest, SearchRequest, SemanticSearchRequest, AskRequest
+from backend.models import (
+    AskRequest,
+    IndexRequest,
+    RepoSummaryRequest,
+    SearchRequest,
+    SemanticSearchRequest,
+)
 from backend.rag_agent import RAGAgent
 from backend.repo_cloner import clone_repository
 from backend.search_engine import SimpleCodeSearchEngine
@@ -28,7 +34,7 @@ RETRY_DELAY_SECONDS = 2
 app = FastAPI(
     title="RepoPilot AI",
     description="Agentic codebase search and bug triage system",
-    version="0.7.0"
+    version="0.8.0",
 )
 
 init_job_store()
@@ -43,7 +49,7 @@ repo_status = {
     "files_indexed": 0,
     "chunks_indexed": 0,
     "indexing_time_ms": 0,
-    "error": None
+    "error": None,
 }
 
 
@@ -76,7 +82,7 @@ def perform_indexing(repo_url: str):
         "repo_url": repo_url,
         "files_indexed": len(files),
         "chunks_indexed": chunks_indexed,
-        "indexing_time_ms": elapsed_ms
+        "indexing_time_ms": elapsed_ms,
     }
 
 
@@ -90,14 +96,14 @@ def run_indexing_job(job_id: str, repo_url: str):
             job_id,
             status="running",
             started_at=current_timestamp(),
-            attempts=attempt
+            attempts=attempt,
         )
 
         create_job_log(
             job_id=job_id,
             attempt=attempt,
             level="info",
-            message=f"Indexing attempt {attempt} started."
+            message=f"Indexing attempt {attempt} started.",
         )
 
         try:
@@ -117,14 +123,14 @@ def run_indexing_job(job_id: str, repo_url: str):
                 indexing_time_ms=result["indexing_time_ms"],
                 error=None,
                 completed_at=current_timestamp(),
-                attempts=attempt
+                attempts=attempt,
             )
 
             create_job_log(
                 job_id=job_id,
                 attempt=attempt,
                 level="info",
-                message="Indexing completed successfully."
+                message="Indexing completed successfully.",
             )
 
             return
@@ -137,7 +143,7 @@ def run_indexing_job(job_id: str, repo_url: str):
                 attempt=attempt,
                 level="error",
                 message=f"Indexing attempt {attempt} failed.",
-                error=last_error
+                error=last_error,
             )
 
             if attempt < MAX_INDEXING_ATTEMPTS:
@@ -146,7 +152,7 @@ def run_indexing_job(job_id: str, repo_url: str):
                     attempt=attempt,
                     level="warning",
                     message=f"Retrying indexing job after {RETRY_DELAY_SECONDS} seconds.",
-                    error=last_error
+                    error=last_error,
                 )
 
                 time.sleep(RETRY_DELAY_SECONDS)
@@ -159,7 +165,7 @@ def run_indexing_job(job_id: str, repo_url: str):
         status="failed",
         error=last_error,
         completed_at=current_timestamp(),
-        attempts=MAX_INDEXING_ATTEMPTS
+        attempts=MAX_INDEXING_ATTEMPTS,
     )
 
     create_job_log(
@@ -167,7 +173,7 @@ def run_indexing_job(job_id: str, repo_url: str):
         attempt=MAX_INDEXING_ATTEMPTS,
         level="error",
         message="Indexing job failed after maximum retry attempts.",
-        error=last_error
+        error=last_error,
     )
 
 
@@ -175,8 +181,8 @@ def run_indexing_job(job_id: str, repo_url: str):
 def root():
     return {
         "message": "RepoPilot AI backend is running",
-        "version": "0.7.0",
-        "status": repo_status
+        "version": "0.8.0",
+        "status": repo_status,
     }
 
 
@@ -185,7 +191,7 @@ def index_repository(request: IndexRequest):
     if repo_status["status"] == "indexing":
         raise HTTPException(
             status_code=409,
-            detail="Another repository is currently being indexed."
+            detail="Another repository is currently being indexed.",
         )
 
     reset_repo_status_for_indexing(request.repo_url)
@@ -213,7 +219,7 @@ def start_indexing_job(request: IndexRequest, background_tasks: BackgroundTasks)
     if repo_status["status"] == "indexing":
         raise HTTPException(
             status_code=409,
-            detail="Another repository is currently being indexed."
+            detail="Another repository is currently being indexed.",
         )
 
     job = create_indexing_job(request.repo_url)
@@ -228,7 +234,7 @@ def start_indexing_job(request: IndexRequest, background_tasks: BackgroundTasks)
         "repo_url": request.repo_url,
         "status": job["status"],
         "status_url": f"/jobs/{job['job_id']}",
-        "logs_url": f"/jobs/{job['job_id']}/logs"
+        "logs_url": f"/jobs/{job['job_id']}/logs",
     }
 
 
@@ -239,7 +245,7 @@ def get_indexing_job(job_id: str):
     if job is None:
         raise HTTPException(
             status_code=404,
-            detail="Indexing job not found."
+            detail="Indexing job not found.",
         )
 
     return job
@@ -252,7 +258,7 @@ def get_indexing_job_logs(job_id: str):
     if job is None:
         raise HTTPException(
             status_code=404,
-            detail="Indexing job not found."
+            detail="Indexing job not found.",
         )
 
     logs = get_job_logs(job_id)
@@ -260,7 +266,7 @@ def get_indexing_job_logs(job_id: str):
     return {
         "job_id": job_id,
         "total_logs": len(logs),
-        "logs": logs
+        "logs": logs,
     }
 
 
@@ -270,7 +276,7 @@ def list_indexing_jobs(status: Optional[str] = None, limit: int = 50):
 
     return {
         "total_jobs": len(jobs),
-        "jobs": jobs
+        "jobs": jobs,
     }
 
 
@@ -281,7 +287,7 @@ def search_repository(request: SearchRequest):
     if repo_status["status"] != "completed":
         raise HTTPException(
             status_code=400,
-            detail="No repository indexed yet. Please index a repository first."
+            detail="No repository indexed yet. Please index a repository first.",
         )
 
     results = keyword_search_engine.search(request.query, request.top_k)
@@ -293,7 +299,7 @@ def search_repository(request: SearchRequest):
         "query": request.query,
         "top_k": request.top_k,
         "query_latency_ms": elapsed_ms,
-        "results": results
+        "results": results,
     }
 
 
@@ -304,7 +310,7 @@ def semantic_search_repository(request: SemanticSearchRequest):
     if repo_status["status"] != "completed":
         raise HTTPException(
             status_code=400,
-            detail="No repository indexed yet. Please index a repository first."
+            detail="No repository indexed yet. Please index a repository first.",
         )
 
     results = semantic_vector_store.semantic_search(request.query, request.top_k)
@@ -316,8 +322,46 @@ def semantic_search_repository(request: SemanticSearchRequest):
         "query": request.query,
         "top_k": request.top_k,
         "query_latency_ms": elapsed_ms,
-        "results": results
+        "results": results,
     }
+
+
+@app.post("/repo-summary")
+def generate_repo_summary(request: RepoSummaryRequest):
+    start_time = time.time()
+
+    if repo_status["status"] != "completed":
+        raise HTTPException(
+            status_code=400,
+            detail="No repository indexed yet. Please index a repository first.",
+        )
+
+    try:
+        summary_query = (
+            "repository overview architecture main modules technologies "
+            "features setup usage API endpoints data flow README"
+        )
+
+        retrieved_chunks = semantic_vector_store.semantic_search(
+            summary_query,
+            request.top_k,
+        )
+
+        summary_response = rag_agent.summarize_repository(retrieved_chunks)
+
+        elapsed_ms = int((time.time() - start_time) * 1000)
+
+        return {
+            "answer_type": "repo_summary",
+            "repo_url": repo_status["repo_url"],
+            "top_k": request.top_k,
+            "summary_latency_ms": elapsed_ms,
+            "summary": summary_response["summary"],
+            "sources": summary_response["sources"],
+        }
+
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=str(error))
 
 
 @app.post("/ask")
@@ -327,18 +371,18 @@ def ask_repository(request: AskRequest):
     if repo_status["status"] != "completed":
         raise HTTPException(
             status_code=400,
-            detail="No repository indexed yet. Please index a repository first."
+            detail="No repository indexed yet. Please index a repository first.",
         )
 
     try:
         retrieved_chunks = semantic_vector_store.semantic_search(
             request.question,
-            request.top_k
+            request.top_k,
         )
 
         rag_response = rag_agent.answer_question(
             request.question,
-            retrieved_chunks
+            retrieved_chunks,
         )
 
         elapsed_ms = int((time.time() - start_time) * 1000)
@@ -349,7 +393,7 @@ def ask_repository(request: AskRequest):
             "top_k": request.top_k,
             "answer_latency_ms": elapsed_ms,
             "answer": rag_response["answer"],
-            "sources": rag_response["sources"]
+            "sources": rag_response["sources"],
         }
 
     except Exception as error:
@@ -359,4 +403,3 @@ def ask_repository(request: AskRequest):
 @app.get("/status")
 def get_status():
     return repo_status
-

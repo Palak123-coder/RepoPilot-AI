@@ -4,6 +4,7 @@ from backend.chunker import chunk_files, chunk_text
 from backend.file_parser import parse_repository
 from backend.search_engine import SimpleCodeSearchEngine
 
+
 def get_chunk_text(chunk):
     if isinstance(chunk, str):
         return chunk
@@ -16,9 +17,10 @@ def get_chunk_text(chunk):
         or ""
     )
 
+
 def normalize_path(path):
-    # Fixed the backslash escape sequence here to correctly replace "\" with "/"
     return str(path).replace("\\", "/")
+
 
 def test_chunk_text_splits_long_text():
     text = "authentication token validation " * 100
@@ -28,11 +30,12 @@ def test_chunk_text_splits_long_text():
     assert len(chunks) > 1
     assert all(get_chunk_text(chunk).strip() for chunk in chunks)
 
+
 def test_chunk_files_preserves_file_path_and_content():
     files = [
         {
             "path": "src/auth.py",
-            "content": "def login():\n    validate_token()\n" * 50
+            "content": "def login():\n    validate_token()\n" * 50,
         }
     ]
 
@@ -45,6 +48,7 @@ def test_chunk_files_preserves_file_path_and_content():
     assert "path" in first_chunk
     assert first_chunk["path"] == "src/auth.py"
     assert get_chunk_text(first_chunk).strip()
+
 
 def test_file_parser_reads_supported_files_and_ignores_heavy_folders(tmp_path):
     src_dir = tmp_path / "src"
@@ -73,22 +77,23 @@ def test_file_parser_reads_supported_files_and_ignores_heavy_folders(tmp_path):
     assert not any("node_modules" in path for path in parsed_paths)
     assert not any(path.endswith("diagram.png") for path in parsed_paths)
 
+
 def test_keyword_search_returns_relevant_ranked_results():
     engine = SimpleCodeSearchEngine()
 
     files = [
         {
             "path": "src/auth.py",
-            "content": "login token authentication validation token token"
+            "content": "login token authentication validation token token",
         },
         {
             "path": "src/database.py",
-            "content": "database connection query transaction"
+            "content": "database connection query transaction",
         },
         {
             "path": "README.md",
-            "content": "project documentation setup installation"
-        }
+            "content": "project documentation setup installation",
+        },
     ]
 
     engine.index_files(files)
@@ -100,13 +105,14 @@ def test_keyword_search_returns_relevant_ranked_results():
     assert results[0]["score"] > 0
     assert "snippet" in results[0]
 
+
 def test_keyword_search_respects_top_k():
     engine = SimpleCodeSearchEngine()
 
     files = [
         {"path": "a.py", "content": "search ranking indexing"},
         {"path": "b.py", "content": "search indexing"},
-        {"path": "c.py", "content": "search"}
+        {"path": "c.py", "content": "search"},
     ]
 
     engine.index_files(files)
@@ -114,3 +120,11 @@ def test_keyword_search_respects_top_k():
     results = engine.search("search", top_k=2)
 
     assert len(results) <= 2
+
+
+def test_repository_summary_request_model_defaults():
+    from backend.models import RepoSummaryRequest
+
+    request = RepoSummaryRequest()
+
+    assert request.top_k == 10
