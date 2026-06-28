@@ -27,6 +27,11 @@ def _connect():
     return connection
 
 
+def _column_exists(connection, table_name: str, column_name: str) -> bool:
+    rows = connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+    return any(row["name"] == column_name for row in rows)
+
+
 def init_job_store() -> None:
     with _db_lock:
         with _connect() as connection:
@@ -47,6 +52,26 @@ def init_job_store() -> None:
                     started_at TEXT,
                     completed_at TEXT,
                     attempts INTEGER DEFAULT 0
+                )
+                """
+            )
+
+            if not _column_exists(connection, "indexing_jobs", "attempts"):
+                connection.execute(
+                    "ALTER TABLE indexing_jobs ADD COLUMN attempts INTEGER DEFAULT 0"
+                )
+
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS job_logs (
+                    log_id TEXT PRIMARY KEY,
+                    job_id TEXT NOT NULL,
+                    attempt INTEGER NOT NULL,
+                    level TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    error TEXT,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (job_id) REFERENCES indexing_jobs(job_id)
                 )
                 """
             )
@@ -205,3 +230,72 @@ def list_jobs(status: Optional[str] = None, limit: int = 50) -> list[dict]:
                 ).fetchall()
 
     return [dict(row) for row in rows]
+
+
+def create_job_log(
+    job_id: str,
+    attempt: int,
+    level: str,
+    message: str,
+    error: Optional[str] = None,
+) -> dict:
+    init_job_store()
+
+    log = {
+        "log_id": str(uuid.uuid4()),
+        "job_id": job_id,
+        "attempt": attempt,
+        "level": level,
+        "message": message,
+        "error": error,
+        "created_at": current_timestamp(),
+    }
+
+    with _db_lock:
+        with _connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO job_logs (
+                    log_id,
+                    job_id,
+                    attempt,
+                    level,
+                    message,
+                    error,
+                    created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    log["log_id"],
+                    log["job_id"],
+                    log["attempt"],
+                    log["level"],
+                    log["message"],
+                    log["error"],
+                    log["created_at"],
+                ),
+            )
+
+            connection.commit()
+
+    return log
+
+
+def get_job_logs(job_id: str) -> list[dict]:
+    init_job_store()
+
+    with _db_lock:
+        with _connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT *
+                FROM job_logs
+                WHERE job_id = ?
+                ORDER BY created_at ASC
+                """,
+                (job_id,),
+            ).fetchall()
+
+    return [dict(row) for row in rows]
+

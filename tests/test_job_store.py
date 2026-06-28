@@ -30,3 +30,37 @@ def test_job_store_persists_and_filters_jobs(tmp_path, monkeypatch):
 
     assert len(failed_jobs) == 1
     assert failed_jobs[0]["job_id"] == job["job_id"]
+
+
+def test_job_store_records_job_logs(tmp_path, monkeypatch):
+    test_db_path = tmp_path / "test_job_logs.db"
+    monkeypatch.setattr(job_store, "DB_PATH", test_db_path)
+
+    job_store.init_job_store()
+
+    job = job_store.create_indexing_job(
+        "https://github.com/Palak123-coder/invalid-repo"
+    )
+
+    job_store.create_job_log(
+        job_id=job["job_id"],
+        attempt=1,
+        level="info",
+        message="Indexing attempt 1 started."
+    )
+
+    job_store.create_job_log(
+        job_id=job["job_id"],
+        attempt=1,
+        level="error",
+        message="Indexing attempt 1 failed.",
+        error="Repository clone failed."
+    )
+
+    logs = job_store.get_job_logs(job["job_id"])
+
+    assert len(logs) == 2
+    assert logs[0]["level"] == "info"
+    assert logs[1]["level"] == "error"
+    assert logs[1]["error"] == "Repository clone failed."
+

@@ -7,8 +7,10 @@ from backend.chunker import chunk_files
 from backend.file_parser import parse_repository
 from backend.job_store import (
     create_indexing_job,
+    create_job_log,
     current_timestamp,
     get_job,
+    get_job_logs,
     init_job_store,
     list_jobs,
     update_job,
@@ -20,13 +22,15 @@ from backend.search_engine import SimpleCodeSearchEngine
 from backend.vector_store import SemanticCodeVectorStore
 
 
+MAX_INDEXING_ATTEMPTS = 2
+RETRY_DELAY_SECONDS = 2
+
 app = FastAPI(
     title="RepoPilot AI",
     description="Agentic codebase search and bug triage system",
-    version="0.6.0"
+    version="0.7.0"
 )
 
-# Initialize SQLite job storage
 init_job_store()
 
 keyword_search_engine = SimpleCodeSearchEngine()
@@ -79,49 +83,99 @@ def perform_indexing(repo_url: str):
 def run_indexing_job(job_id: str, repo_url: str):
     reset_repo_status_for_indexing(repo_url)
 
+    last_error = None
+
+    for attempt in range(1, MAX_INDEXING_ATTEMPTS + 1):
+        update_job(
+            job_id,
+            status="running",
+            started_at=current_timestamp(),
+            attempts=attempt
+        )
+
+        create_job_log(
+            job_id=job_id,
+            attempt=attempt,
+            level="info",
+            message=f"Indexing attempt {attempt} started."
+        )
+
+        try:
+            result = perform_indexing(repo_url)
+
+            repo_status["status"] = "completed"
+            repo_status["files_indexed"] = result["files_indexed"]
+            repo_status["chunks_indexed"] = result["chunks_indexed"]
+            repo_status["indexing_time_ms"] = result["indexing_time_ms"]
+            repo_status["error"] = None
+
+            update_job(
+                job_id,
+                status="completed",
+                files_indexed=result["files_indexed"],
+                chunks_indexed=result["chunks_indexed"],
+                indexing_time_ms=result["indexing_time_ms"],
+                error=None,
+                completed_at=current_timestamp(),
+                attempts=attempt
+            )
+
+            create_job_log(
+                job_id=job_id,
+                attempt=attempt,
+                level="info",
+                message="Indexing completed successfully."
+            )
+
+            return
+
+        except Exception as error:
+            last_error = str(error)
+
+            create_job_log(
+                job_id=job_id,
+                attempt=attempt,
+                level="error",
+                message=f"Indexing attempt {attempt} failed.",
+                error=last_error
+            )
+
+            if attempt < MAX_INDEXING_ATTEMPTS:
+                create_job_log(
+                    job_id=job_id,
+                    attempt=attempt,
+                    level="warning",
+                    message=f"Retrying indexing job after {RETRY_DELAY_SECONDS} seconds.",
+                    error=last_error
+                )
+
+                time.sleep(RETRY_DELAY_SECONDS)
+
+    repo_status["status"] = "failed"
+    repo_status["error"] = last_error
+
     update_job(
         job_id,
-        status="running",
-        started_at=current_timestamp(),
-        attempts=1
+        status="failed",
+        error=last_error,
+        completed_at=current_timestamp(),
+        attempts=MAX_INDEXING_ATTEMPTS
     )
 
-    try:
-        result = perform_indexing(repo_url)
-
-        repo_status["status"] = "completed"
-        repo_status["files_indexed"] = result["files_indexed"]
-        repo_status["chunks_indexed"] = result["chunks_indexed"]
-        repo_status["indexing_time_ms"] = result["indexing_time_ms"]
-        repo_status["error"] = None
-
-        update_job(
-            job_id,
-            status="completed",
-            files_indexed=result["files_indexed"],
-            chunks_indexed=result["chunks_indexed"],
-            indexing_time_ms=result["indexing_time_ms"],
-            error=None,
-            completed_at=current_timestamp()
-        )
-
-    except Exception as error:
-        repo_status["status"] = "failed"
-        repo_status["error"] = str(error)
-
-        update_job(
-            job_id,
-            status="failed",
-            error=str(error),
-            completed_at=current_timestamp()
-        )
+    create_job_log(
+        job_id=job_id,
+        attempt=MAX_INDEXING_ATTEMPTS,
+        level="error",
+        message="Indexing job failed after maximum retry attempts.",
+        error=last_error
+    )
 
 
 @app.get("/")
 def root():
     return {
         "message": "RepoPilot AI backend is running",
-        "version": "0.6.0",
+        "version": "0.7.0",
         "status": repo_status
     }
 
@@ -173,7 +227,8 @@ def start_indexing_job(request: IndexRequest, background_tasks: BackgroundTasks)
         "job_id": job["job_id"],
         "repo_url": request.repo_url,
         "status": job["status"],
-        "status_url": f"/jobs/{job['job_id']}"
+        "status_url": f"/jobs/{job['job_id']}",
+        "logs_url": f"/jobs/{job['job_id']}/logs"
     }
 
 
@@ -188,6 +243,25 @@ def get_indexing_job(job_id: str):
         )
 
     return job
+
+
+@app.get("/jobs/{job_id}/logs")
+def get_indexing_job_logs(job_id: str):
+    job = get_job(job_id)
+
+    if job is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Indexing job not found."
+        )
+
+    logs = get_job_logs(job_id)
+
+    return {
+        "job_id": job_id,
+        "total_logs": len(logs),
+        "logs": logs
+    }
 
 
 @app.get("/jobs")
@@ -285,3 +359,4 @@ def ask_repository(request: AskRequest):
 @app.get("/status")
 def get_status():
     return repo_status
+
