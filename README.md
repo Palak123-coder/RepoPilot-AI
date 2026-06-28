@@ -113,7 +113,6 @@ RepoPilot-AI/
 └── requirements.txt
 ```
 
-> Note: `data/repopilot_jobs.db`, `data/chroma_db/`, and `data/cloned_repos/` are generated locally and should not be committed to GitHub.
 
 ## How It Works
 
