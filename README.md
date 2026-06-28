@@ -1,8 +1,8 @@
 # RepoPilot AI
 
-RepoPilot AI is a FastAPI-based codebase intelligence system that indexes public GitHub repositories and answers developer questions using keyword search, semantic search, RAG-based answer generation, repository summary generation, architecture explanation, background indexing jobs, persistent SQLite job storage, retry handling, failed-job logs, and an interactive Streamlit dashboard.
+RepoPilot AI is a FastAPI-based codebase intelligence system that indexes public GitHub repositories and answers developer questions using keyword search, semantic search, RAG-based answer generation, repository summary generation, architecture explanation, bug-triage suggestions, background indexing jobs, persistent SQLite job storage, retry handling, failed-job logs, and an interactive Streamlit dashboard.
 
-The project helps developers understand unfamiliar repositories, locate relevant files, inspect architecture, and debug code faster using repository parsing, code chunking, embeddings, vector search, Groq-powered grounded answers, repository-level summaries, source-backed architecture explanations, background job tracking, persistent job history, retry-aware failure handling, status filtering, source file references, and tested core workflows.
+The project helps developers understand unfamiliar repositories, locate relevant files, inspect architecture, and debug code faster using repository parsing, code chunking, embeddings, vector search, Groq-powered grounded answers, repository-level summaries, source-backed architecture explanations, source-backed bug triage, background job tracking, persistent job history, retry-aware failure handling, status filtering, source file references, and tested core workflows.
 
 ## Features
 
@@ -19,9 +19,10 @@ The project helps developers understand unfamiliar repositories, locate relevant
 * Supports RAG-based question answering through `/ask`
 * Supports repository summary generation through `/repo-summary`
 * Supports architecture explanation through `/architecture`
+* Supports source-backed bug triage through `/bug-triage`
 * Uses semantic retrieval over indexed code chunks before generating answers
-* Uses semantic retrieval over repository chunks before generating summaries and architecture explanations
-* Generates grounded answers, summaries, and architecture explanations using Groq LLM with relevant file references
+* Uses semantic retrieval over repository chunks before generating summaries, architecture explanations, and bug-triage suggestions
+* Generates grounded answers, summaries, architecture explanations, and debugging suggestions using Groq LLM with relevant file references
 * Supports synchronous repository indexing through `/index`
 * Supports background indexing jobs through `/index-job`
 * Provides job tracking through `/jobs/{job_id}`
@@ -40,8 +41,8 @@ The project helps developers understand unfamiliar repositories, locate relevant
 * Provides an interactive Streamlit dashboard for repository indexing, keyword search, semantic search, and RAG-based question answering
 * Uses Streamlit dashboard polling to track `/index-job` progress through `/jobs/{job_id}`
 * Displays live job status, job ID, files indexed, chunks indexed, and indexing time
-* Displays query latency, summary latency, architecture latency, answer latency, generated answers, and source file references
-* Includes unit tests for chunking, repository parsing, ignored-folder filtering, keyword search ranking, top-K retrieval, SQLite job storage, job logs, repository summary request defaults, and architecture request defaults
+* Displays query latency, summary latency, architecture latency, triage latency, answer latency, generated answers, and source file references
+* Includes unit tests for chunking, repository parsing, ignored-folder filtering, keyword search ranking, top-K retrieval, SQLite job storage, job logs, repository summary request defaults, architecture request defaults, and bug-triage request defaults
 * Exposes API documentation through FastAPI Swagger UI
 
 ## Tech Stack
@@ -137,9 +138,9 @@ Store embeddings in ChromaDB
         ↓
 Retrieve relevant chunks using semantic search
         ↓
-Generate grounded answers, repository summaries, or architecture explanations using Groq LLM
+Generate grounded answers, repository summaries, architecture explanations, or bug-triage suggestions using Groq LLM
         ↓
-Return answer/summary/architecture explanation with source file references
+Return answer/summary/architecture/triage output with source file references
 ```
 
 For background indexing, the workflow becomes:
@@ -347,6 +348,47 @@ Example architecture sections:
 7. How a New Developer Should Navigate the Codebase
 ```
 
+## Bug Triage
+
+The `/bug-triage` endpoint generates source-backed debugging suggestions from a natural-language bug report.
+
+For each bug-triage request:
+
+1. RepoPilot AI combines the bug description with debugging-focused retrieval terms.
+2. ChromaDB retrieves repository chunks related to the possible bug area.
+3. Retrieved chunks are passed to the Groq LLM as grounded context.
+4. The LLM generates a structured bug-triage report using only the retrieved repository context.
+5. The API returns possible causes, relevant files, debugging steps, suggested fix direction, and source file references.
+
+The generated bug triage includes:
+
+* Bug summary
+* Most relevant files
+* Possible causes
+* Debugging steps
+* Suggested fix direction
+* What is not clearly visible from retrieved context
+
+Example bug-triage request:
+
+```json
+{
+  "bug_description": "Search results are empty even after indexing the repository.",
+  "top_k": 8
+}
+```
+
+Example bug-triage sections:
+
+```text
+1. Bug Summary
+2. Most Relevant Files
+3. Possible Causes
+4. Debugging Steps
+5. Suggested Fix Direction
+6. What Is Not Clearly Visible From Retrieved Context
+```
+
 ## Background Indexing Jobs
 
 RepoPilot AI supports background indexing jobs for a more scalable and production-like workflow.
@@ -490,6 +532,7 @@ The tests cover:
 * Job log retrieval
 * Repository summary request defaults
 * Architecture request defaults
+* Bug-triage request defaults
 
 Run tests with:
 
@@ -500,7 +543,7 @@ python -m pytest -v
 Expected result:
 
 ```text
-9 passed
+10 passed
 ```
 
 ## API Endpoints
@@ -514,7 +557,7 @@ Example response:
 ```json
 {
   "message": "RepoPilot AI backend is running",
-  "version": "0.9.0",
+  "version": "1.0.0",
   "status": {
     "status": "idle",
     "repo_url": null,
@@ -546,7 +589,7 @@ Example response:
   "repo_url": "https://github.com/Palak123-coder/MiniSearchX",
   "files_indexed": 7,
   "chunks_indexed": 31,
-  "indexing_time_ms": 6462
+  "indexing_time_ms": 6870
 }
 ```
 
@@ -567,11 +610,11 @@ Example response:
 ```json
 {
   "message": "Indexing job started",
-  "job_id": "e0441601-3996-4500-8ea2-2d1aa11b04a9",
+  "job_id": "e6ae2a6f-481a-45bf-a746-6451c3711cae",
   "repo_url": "https://github.com/Palak123-coder/MiniSearchX",
   "status": "pending",
-  "status_url": "/jobs/e0441601-3996-4500-8ea2-2d1aa11b04a9",
-  "logs_url": "/jobs/e0441601-3996-4500-8ea2-2d1aa11b04a9/logs"
+  "status_url": "/jobs/e6ae2a6f-481a-45bf-a746-6451c3711cae",
+  "logs_url": "/jobs/e6ae2a6f-481a-45bf-a746-6451c3711cae/logs"
 }
 ```
 
@@ -583,16 +626,16 @@ Successful job example:
 
 ```json
 {
-  "job_id": "e0441601-3996-4500-8ea2-2d1aa11b04a9",
+  "job_id": "e6ae2a6f-481a-45bf-a746-6451c3711cae",
   "repo_url": "https://github.com/Palak123-coder/MiniSearchX",
   "status": "completed",
   "files_indexed": 7,
   "chunks_indexed": 31,
-  "indexing_time_ms": 6462,
+  "indexing_time_ms": 6870,
   "error": null,
-  "created_at": "2026-06-28T14:13:01.374609Z",
-  "started_at": "2026-06-28T14:13:01.391670Z",
-  "completed_at": "2026-06-28T14:13:07.954852Z",
+  "created_at": "2026-06-28T14:36:20.911381Z",
+  "started_at": "2026-06-28T14:36:20.930898Z",
+  "completed_at": "2026-06-28T14:36:27.860202Z",
   "attempts": 1
 }
 ```
@@ -623,26 +666,26 @@ Successful job logs example:
 
 ```json
 {
-  "job_id": "e0441601-3996-4500-8ea2-2d1aa11b04a9",
+  "job_id": "e6ae2a6f-481a-45bf-a746-6451c3711cae",
   "total_logs": 2,
   "logs": [
     {
-      "log_id": "171dfd6a-639e-4aac-8eb8-cc8795399d16",
-      "job_id": "e0441601-3996-4500-8ea2-2d1aa11b04a9",
+      "log_id": "75085db3-bd96-413d-a2b0-b29295445a0e",
+      "job_id": "e6ae2a6f-481a-45bf-a746-6451c3711cae",
       "attempt": 1,
       "level": "info",
       "message": "Indexing attempt 1 started.",
       "error": null,
-      "created_at": "2026-06-28T14:13:01.467597Z"
+      "created_at": "2026-06-28T14:36:20.972201Z"
     },
     {
-      "log_id": "f698dddd-c561-4b9d-901e-792a10104cd5",
-      "job_id": "e0441601-3996-4500-8ea2-2d1aa11b04a9",
+      "log_id": "48614bed-990a-42a9-9183-e4c45002787d",
+      "job_id": "e6ae2a6f-481a-45bf-a746-6451c3711cae",
       "attempt": 1,
       "level": "info",
       "message": "Indexing completed successfully.",
       "error": null,
-      "created_at": "2026-06-28T14:13:07.986829Z"
+      "created_at": "2026-06-28T14:36:27.908328Z"
     }
   ]
 }
@@ -719,16 +762,16 @@ Example response:
   "total_jobs": 2,
   "jobs": [
     {
-      "job_id": "e0441601-3996-4500-8ea2-2d1aa11b04a9",
+      "job_id": "e6ae2a6f-481a-45bf-a746-6451c3711cae",
       "repo_url": "https://github.com/Palak123-coder/MiniSearchX",
       "status": "completed",
       "files_indexed": 7,
       "chunks_indexed": 31,
-      "indexing_time_ms": 6462,
+      "indexing_time_ms": 6870,
       "error": null,
-      "created_at": "2026-06-28T14:13:01.374609Z",
-      "started_at": "2026-06-28T14:13:01.391670Z",
-      "completed_at": "2026-06-28T14:13:07.954852Z",
+      "created_at": "2026-06-28T14:36:20.911381Z",
+      "started_at": "2026-06-28T14:36:20.930898Z",
+      "completed_at": "2026-06-28T14:36:27.860202Z",
       "attempts": 1
     }
   ]
@@ -797,6 +840,44 @@ Example response:
       "path": "README.md",
       "chunk_index": 9,
       "distance": 1.4670658111572266
+    }
+  ]
+}
+```
+
+### `POST /bug-triage`
+
+Generates source-backed bug-triage suggestions using semantic retrieval and Groq LLM.
+
+Request body:
+
+```json
+{
+  "bug_description": "Search results are empty even after indexing the repository.",
+  "top_k": 8
+}
+```
+
+Example response:
+
+```json
+{
+  "answer_type": "bug_triage",
+  "repo_url": "https://github.com/Palak123-coder/MiniSearchX",
+  "bug_description": "Search results are empty even after indexing the repository.",
+  "top_k": 8,
+  "triage_latency_ms": 1445,
+  "triage": "Bug Summary...",
+  "sources": [
+    {
+      "path": "README.md",
+      "chunk_index": 8,
+      "distance": 1.1358269453048706
+    },
+    {
+      "path": "tests\\test_minisearchx.cpp",
+      "chunk_index": 3,
+      "distance": 1.1860042810440063
     }
   ]
 }
@@ -920,7 +1001,7 @@ Example response:
   "repo_url": "https://github.com/Palak123-coder/MiniSearchX",
   "files_indexed": 7,
   "chunks_indexed": 31,
-  "indexing_time_ms": 6462,
+  "indexing_time_ms": 6870,
   "error": null
 }
 ```
@@ -1026,7 +1107,7 @@ Example completed response:
   "status": "completed",
   "files_indexed": 7,
   "chunks_indexed": 31,
-  "indexing_time_ms": 6462,
+  "indexing_time_ms": 6870,
   "error": null,
   "attempts": 1
 }
@@ -1062,7 +1143,20 @@ Use `POST /architecture` with:
 
 The API returns a source-backed architecture explanation with entry points, modules, execution flow, dependencies, and source file references.
 
-### Step 6: Confirm persistent job history
+### Step 6: Generate bug-triage suggestions
+
+Use `POST /bug-triage` with:
+
+```json
+{
+  "bug_description": "Search results are empty even after indexing the repository.",
+  "top_k": 8
+}
+```
+
+The API returns possible causes, relevant files, debugging steps, suggested fix direction, and source file references.
+
+### Step 7: Confirm persistent job history
 
 Stop the backend and restart it:
 
@@ -1079,14 +1173,14 @@ GET /jobs
 
 The previous job should still appear because job history is stored in SQLite.
 
-### Step 7: Filter jobs by status
+### Step 8: Filter jobs by status
 
 ```text
 GET /jobs?status=completed
 GET /jobs?status=failed
 ```
 
-### Step 8: View job status in Streamlit
+### Step 9: View job status in Streamlit
 
 Open the Streamlit dashboard and click:
 
@@ -1104,7 +1198,7 @@ Chunks Indexed
 Indexing Time
 ```
 
-### Step 9: Load job history
+### Step 10: Load job history
 
 Click:
 
@@ -1118,7 +1212,7 @@ This fetches job history from:
 GET /jobs
 ```
 
-### Step 10: Run keyword search
+### Step 11: Run keyword search
 
 Use `POST /search` or the Streamlit dashboard with:
 
@@ -1129,7 +1223,7 @@ Use `POST /search` or the Streamlit dashboard with:
 }
 ```
 
-### Step 11: Run semantic search
+### Step 12: Run semantic search
 
 Use `POST /semantic-search` or the Streamlit dashboard with:
 
@@ -1140,7 +1234,7 @@ Use `POST /semantic-search` or the Streamlit dashboard with:
 }
 ```
 
-### Step 12: Ask a RAG question
+### Step 13: Ask a RAG question
 
 Use `POST /ask` or the Streamlit dashboard with:
 
@@ -1153,20 +1247,21 @@ Use `POST /ask` or the Streamlit dashboard with:
 
 ## Current Demo Metrics
 
-RepoPilot AI successfully indexed the MiniSearchX repository and returned keyword search, semantic search, RAG answer-generation, repository summary generation, architecture explanation, background job tracking, persistent SQLite job history, retry-aware failed-job logs, live Streamlit job-status results, and passing unit tests.
+RepoPilot AI successfully indexed the MiniSearchX repository and returned keyword search, semantic search, RAG answer-generation, repository summary generation, architecture explanation, source-backed bug triage, background job tracking, persistent SQLite job history, retry-aware failed-job logs, live Streamlit job-status results, and passing unit tests.
 
 ```text
 Files indexed: 7
 Chunks indexed: 31
-Background indexing time: 6462 ms
+Background indexing time: 6870 ms
 Repository summary latency: 1307 ms
 Architecture explanation latency: 2001 ms
+Bug triage latency: 1445 ms
 Successful job attempts: 1
 Failed job attempts: 2
 Keyword query latency: 1 ms
 Semantic query latency: 45 ms
 RAG answer latency: 815 ms
-Unit tests: 9 passed
+Unit tests: 10 passed
 ```
 
 ## Demo Screenshots
@@ -1209,7 +1304,7 @@ Unit tests: 9 passed
 
 ## Status
 
-This is version `0.9.0`.
+This is version `1.0.0`.
 
 
 * GitHub repository cloning
@@ -1223,10 +1318,12 @@ This is version `0.9.0`.
 * RAG-based answer generation
 * Repository summary generation
 * Architecture explanation endpoint
+* Bug-triage endpoint
 * Groq LLM integration
 * Grounded answers with source file references
 * Source-backed repository summaries
 * Source-backed architecture explanations
+* Source-backed bug-triage suggestions
 * Background indexing jobs
 * UUID-based job IDs
 * SQLite-based persistent job storage
@@ -1236,6 +1333,7 @@ This is version `0.9.0`.
 * `/jobs/{job_id}/logs` endpoint
 * `/repo-summary` endpoint
 * `/architecture` endpoint
+* `/bug-triage` endpoint
 * Job-status polling
 * Job history filtering by status
 * Job attempt tracking
@@ -1245,12 +1343,13 @@ This is version `0.9.0`.
 * Live job-status polling in Streamlit dashboard
 * Dashboard support for `/index-job`, `/jobs/{job_id}`, `/jobs/{job_id}/logs`, and `/jobs`
 * Unit tests for core workflows
-* Tests for chunking, file parsing, ignored-folder filtering, keyword ranking, top-K behavior, SQLite job storage, job logs, repository summary request defaults, and architecture request defaults
+* Tests for chunking, file parsing, ignored-folder filtering, keyword ranking, top-K behavior, SQLite job storage, job logs, repository summary request defaults, architecture request defaults, and bug-triage request defaults
 * Snippet extraction
 * Indexing-status tracking
 * Query-latency reporting
 * Summary-latency reporting
 * Architecture-latency reporting
+* Bug-triage latency reporting
 * Answer-latency reporting
 * FastAPI Swagger documentation
 * Demo screenshots
@@ -1259,5 +1358,4 @@ This is version `0.9.0`.
 
 * Add Celery/Redis-based background workers
 * Add Docker support
-* Add bug-triage suggestions based on retrieved code chunks
 * Add support for private repositories
