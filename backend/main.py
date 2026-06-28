@@ -16,6 +16,7 @@ from backend.job_store import (
     update_job,
 )
 from backend.models import (
+    ArchitectureRequest,
     AskRequest,
     IndexRequest,
     RepoSummaryRequest,
@@ -34,7 +35,7 @@ RETRY_DELAY_SECONDS = 2
 app = FastAPI(
     title="RepoPilot AI",
     description="Agentic codebase search and bug triage system",
-    version="0.8.0",
+    version="0.9.0",
 )
 
 init_job_store()
@@ -181,7 +182,7 @@ def run_indexing_job(job_id: str, repo_url: str):
 def root():
     return {
         "message": "RepoPilot AI backend is running",
-        "version": "0.8.0",
+        "version": "0.9.0",
         "status": repo_status,
     }
 
@@ -358,6 +359,45 @@ def generate_repo_summary(request: RepoSummaryRequest):
             "summary_latency_ms": elapsed_ms,
             "summary": summary_response["summary"],
             "sources": summary_response["sources"],
+        }
+
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=str(error))
+
+
+@app.post("/architecture")
+def explain_repository_architecture(request: ArchitectureRequest):
+    start_time = time.time()
+
+    if repo_status["status"] != "completed":
+        raise HTTPException(
+            status_code=400,
+            detail="No repository indexed yet. Please index a repository first.",
+        )
+
+    try:
+        architecture_query = (
+            "architecture entry point main modules components data flow "
+            "execution flow classes functions API endpoints services dependencies "
+            "README setup configuration"
+        )
+
+        retrieved_chunks = semantic_vector_store.semantic_search(
+            architecture_query,
+            request.top_k,
+        )
+
+        architecture_response = rag_agent.explain_architecture(retrieved_chunks)
+
+        elapsed_ms = int((time.time() - start_time) * 1000)
+
+        return {
+            "answer_type": "architecture_explanation",
+            "repo_url": repo_status["repo_url"],
+            "top_k": request.top_k,
+            "architecture_latency_ms": elapsed_ms,
+            "architecture": architecture_response["architecture"],
+            "sources": architecture_response["sources"],
         }
 
     except Exception as error:

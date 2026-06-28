@@ -128,3 +128,11 @@ def test_repository_summary_request_model_defaults():
     request = RepoSummaryRequest()
 
     assert request.top_k == 10
+
+
+def test_architecture_request_model_defaults():
+    from backend.models import ArchitectureRequest
+
+    request = ArchitectureRequest()
+
+    assert request.top_k == 10

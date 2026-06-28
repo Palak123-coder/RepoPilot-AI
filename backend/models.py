@@ -24,5 +24,5 @@ class RepoSummaryRequest(BaseModel):
     top_k: int = 10
 
 
-
-
+class ArchitectureRequest(BaseModel):
+    top_k: int = 10

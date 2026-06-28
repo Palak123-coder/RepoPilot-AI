@@ -183,11 +183,67 @@ Use only the retrieved context.
             "sources": self.build_sources(retrieved_chunks),
         }
 
+    def explain_architecture(self, retrieved_chunks: List[Dict]) -> Dict:
+        if not retrieved_chunks:
+            return {
+                "architecture": (
+                    "I could not generate an architecture explanation because no relevant "
+                    "repository chunks were available."
+                ),
+                "sources": [],
+            }
 
+        context = self.build_context(retrieved_chunks)
 
+        system_prompt = """
+You are RepoPilot AI, a senior software architecture assistant.
 
+Your job is to explain the architecture of an indexed GitHub repository using only the retrieved code/documentation context.
 
+Rules:
+1. Ground the explanation only in the provided context.
+2. Do not invent files, modules, APIs, classes, functions, services, or architecture.
+3. Mention file paths when explaining modules or responsibilities.
+4. Clearly separate what is visible from the retrieved context and what is not visible.
+5. Make the explanation useful for a new developer trying to understand the codebase.
+"""
 
+        user_prompt = f"""
+Retrieved repository context:
+{context}
 
+Generate a source-backed architecture explanation with these sections:
 
+1. Architecture Overview
+2. Entry Points
+3. Main Modules and Responsibilities
+4. Data Flow / Execution Flow
+5. Important Files
+6. External Services or Dependencies
+7. How a New Developer Should Navigate the Codebase
 
+Use only the retrieved context. If a section is not clear from the context, say "Not clearly visible from the retrieved context."
+"""
+
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": system_prompt.strip(),
+                },
+                {
+                    "role": "user",
+                    "content": user_prompt.strip(),
+                },
+            ],
+            temperature=0.2,
+            max_completion_tokens=1000,
+        )
+
+        architecture = response.choices[0].message.content
+
+        return {
+            "architecture": architecture,
+            "sources": self.build_sources(retrieved_chunks),
+        }
