@@ -1,8 +1,8 @@
 # RepoPilot AI
 
-RepoPilot AI is a FastAPI-based codebase intelligence system that indexes public GitHub repositories and answers developer questions using keyword search, semantic search, RAG-based answer generation, background indexing jobs, and an interactive Streamlit dashboard.
+RepoPilot AI is a FastAPI-based codebase intelligence system that indexes public GitHub repositories and answers developer questions using keyword search, semantic search, RAG-based answer generation, background indexing jobs, persistent SQLite job storage, and an interactive Streamlit dashboard.
 
-The project helps developers understand unfamiliar repositories, locate relevant files, and debug code faster using repository parsing, code chunking, embeddings, vector search, Groq-powered grounded answers, asynchronous job tracking, live job-status polling, source file references, and tested core workflows.
+The project helps developers understand unfamiliar repositories, locate relevant files, inspect architecture, and debug code faster using repository parsing, code chunking, embeddings, vector search, Groq-powered grounded answers, background job tracking, persistent job history, status filtering, source file references, and tested core workflows.
 
 ## Features
 
@@ -22,15 +22,19 @@ The project helps developers understand unfamiliar repositories, locate relevant
 * Supports synchronous repository indexing through `/index`
 * Supports background indexing jobs through `/index-job`
 * Provides job tracking through `/jobs/{job_id}`
-* Provides job history through `/jobs`
+* Provides persistent job history through `/jobs`
+* Stores indexing jobs in SQLite using `backend/job_store.py`
+* Preserves indexing job history across backend restarts
+* Supports job filtering by status using `/jobs?status=completed` and `/jobs?status=failed`
+* Supports job history limiting using `/jobs?limit=50`
 * Tracks job status as `pending`, `running`, `completed`, or `failed`
-* Tracks job metadata including `created_at`, `started_at`, and `completed_at`
+* Tracks job metadata including `created_at`, `started_at`, `completed_at`, and `attempts`
+* Tracks repository indexing status, files indexed, chunks indexed, indexing time, and errors
 * Provides an interactive Streamlit dashboard for repository indexing, keyword search, semantic search, and RAG-based question answering
 * Uses Streamlit dashboard polling to track `/index-job` progress through `/jobs/{job_id}`
 * Displays live job status, job ID, files indexed, chunks indexed, and indexing time
 * Displays query latency, answer latency, generated answers, and source file references
-* Tracks repository indexing status, files indexed, chunks indexed, indexing time, and errors
-* Includes unit tests for chunking, repository parsing, ignored-folder filtering, keyword search ranking, and top-K retrieval
+* Includes unit tests for chunking, repository parsing, ignored-folder filtering, keyword search ranking, top-K retrieval, and SQLite job storage
 * Exposes API documentation through FastAPI Swagger UI
 
 ## Tech Stack
@@ -41,6 +45,7 @@ The project helps developers understand unfamiliar repositories, locate relevant
 * GitPython
 * Pydantic
 * Python-dotenv
+* SQLite
 * ChromaDB
 * SentenceTransformers
 * Groq API
@@ -66,17 +71,21 @@ RepoPilot-AI/
 │   ├── search_engine.py
 │   ├── chunker.py
 │   ├── vector_store.py
-│   └── rag_agent.py
+│   ├── rag_agent.py
+│   └── job_store.py
 │
 ├── frontend/
 │   └── app.py
 │
 ├── tests/
-│   └── test_core.py
+│   ├── test_core.py
+│   └── test_job_store.py
 │
 ├── data/
 │   ├── .gitkeep
-│   └── cloned_repos/
+│   ├── cloned_repos/
+│   ├── chroma_db/
+│   └── repopilot_jobs.db
 │
 ├── screenshots/
 │   ├── index-success.png
@@ -95,6 +104,8 @@ RepoPilot-AI/
 ├── README.md
 └── requirements.txt
 ```
+
+> Note: `data/repopilot_jobs.db`, `data/chroma_db/`, and `data/cloned_repos/` are generated locally and should not be committed to GitHub.
 
 ## How It Works
 
@@ -131,11 +142,13 @@ POST /index-job
         ↓
 Create job_id
         ↓
+Persist job metadata in SQLite
+        ↓
 Return response immediately
         ↓
 Run indexing in background
         ↓
-Update job status
+Update job status and attempt count
         ↓
 GET /jobs/{job_id}
         ↓
@@ -249,9 +262,9 @@ This demonstrates:
 * Job tracking
 * Status polling
 * Error reporting
-* System reliability design
-* Backend state management
+* Persistent backend state management
 * Separation between request submission and long-running processing
+* Reliability-focused job metadata tracking
 
 Job statuses:
 
@@ -261,6 +274,42 @@ running   → repository indexing is in progress
 completed → repository indexing completed successfully
 failed    → repository indexing failed
 ```
+
+## SQLite Persistent Job Storage
+
+RepoPilot AI stores indexing jobs in a local SQLite database at:
+
+```text
+data/repopilot_jobs.db
+```
+
+This improves reliability because job history is preserved even if the backend server is stopped and restarted.
+
+Each job stores:
+
+* `job_id`
+* `repo_url`
+* `status`
+* `files_indexed`
+* `chunks_indexed`
+* `indexing_time_ms`
+* `error`
+* `created_at`
+* `started_at`
+* `completed_at`
+* `attempts`
+
+The `/jobs` endpoint supports status filtering:
+
+```text
+GET /jobs
+GET /jobs?status=completed
+GET /jobs?status=failed
+GET /jobs?status=running
+GET /jobs?limit=50
+```
+
+This makes the job system closer to a production-style long-running task workflow.
 
 ## Streamlit Dashboard
 
@@ -274,7 +323,7 @@ The dashboard supports:
 * Job ID display
 * Files indexed, chunks indexed, and indexing-time metrics
 * Repository status refresh
-* Background job history using `/jobs`
+* Persistent background job history using `/jobs`
 * Keyword search with ranked results
 * Semantic search with chunk-level results
 * RAG-based question answering
@@ -294,6 +343,10 @@ The tests cover:
 * Ignored-folder filtering
 * Keyword search ranking
 * Top-K retrieval behavior
+* SQLite job creation
+* SQLite job updates
+* SQLite job retrieval
+* SQLite job status filtering
 
 Run tests with:
 
@@ -304,7 +357,7 @@ python -m pytest -v
 Latest test result:
 
 ```text
-5 passed in 0.11s
+6 passed
 ```
 
 ## API Endpoints
@@ -318,7 +371,7 @@ Example response:
 ```json
 {
   "message": "RepoPilot AI backend is running",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "status": {
     "status": "idle",
     "repo_url": null,
@@ -348,9 +401,9 @@ Example response:
 {
   "message": "Repository indexed successfully",
   "repo_url": "https://github.com/Palak123-coder/MiniSearchX",
-  "files_indexed": 6,
-  "chunks_indexed": 29,
-  "indexing_time_ms": 5530
+  "files_indexed": 7,
+  "chunks_indexed": 31,
+  "indexing_time_ms": 8822
 }
 ```
 
@@ -371,10 +424,10 @@ Example response:
 ```json
 {
   "message": "Indexing job started",
-  "job_id": "ebf3db6c-749f-45cb-bca1-b70b17eb3882",
+  "job_id": "14119d8a-7e48-4165-a27d-a0f51076f4f9",
   "repo_url": "https://github.com/Palak123-coder/MiniSearchX",
   "status": "pending",
-  "status_url": "/jobs/ebf3db6c-749f-45cb-bca1-b70b17eb3882"
+  "status_url": "/jobs/14119d8a-7e48-4165-a27d-a0f51076f4f9"
 }
 ```
 
@@ -386,22 +439,36 @@ Example response:
 
 ```json
 {
-  "job_id": "ebf3db6c-749f-45cb-bca1-b70b17eb3882",
+  "job_id": "14119d8a-7e48-4165-a27d-a0f51076f4f9",
   "repo_url": "https://github.com/Palak123-coder/MiniSearchX",
   "status": "completed",
-  "files_indexed": 6,
-  "chunks_indexed": 29,
-  "indexing_time_ms": 5176,
+  "files_indexed": 7,
+  "chunks_indexed": 31,
+  "indexing_time_ms": 8822,
   "error": null,
-  "created_at": "2026-06-25T13:52:51.372864Z",
-  "started_at": "2026-06-25T13:52:51.374285Z",
-  "completed_at": "2026-06-25T13:52:56.550375Z"
+  "created_at": "2026-06-28T07:52:42.398661Z",
+  "started_at": "2026-06-28T07:52:42.414445Z",
+  "completed_at": "2026-06-28T07:52:51.270052Z",
+  "attempts": 1
 }
 ```
 
 ### `GET /jobs`
 
-Returns all indexing jobs stored during the current backend session.
+Returns persisted indexing job history from SQLite.
+
+Optional query parameters:
+
+```text
+status: pending | running | completed | failed
+limit: number of jobs to return
+```
+
+Example request:
+
+```text
+GET /jobs?status=completed&limit=50
+```
 
 Example response:
 
@@ -410,16 +477,17 @@ Example response:
   "total_jobs": 1,
   "jobs": [
     {
-      "job_id": "ebf3db6c-749f-45cb-bca1-b70b17eb3882",
+      "job_id": "14119d8a-7e48-4165-a27d-a0f51076f4f9",
       "repo_url": "https://github.com/Palak123-coder/MiniSearchX",
       "status": "completed",
-      "files_indexed": 6,
-      "chunks_indexed": 29,
-      "indexing_time_ms": 5176,
+      "files_indexed": 7,
+      "chunks_indexed": 31,
+      "indexing_time_ms": 8822,
       "error": null,
-      "created_at": "2026-06-25T13:52:51.372864Z",
-      "started_at": "2026-06-25T13:52:51.374285Z",
-      "completed_at": "2026-06-25T13:52:56.550375Z"
+      "created_at": "2026-06-28T07:52:42.398661Z",
+      "started_at": "2026-06-28T07:52:42.414445Z",
+      "completed_at": "2026-06-28T07:52:51.270052Z",
+      "attempts": 1
     }
   ]
 }
@@ -541,9 +609,9 @@ Example response:
 {
   "status": "completed",
   "repo_url": "https://github.com/Palak123-coder/MiniSearchX",
-  "files_indexed": 6,
-  "chunks_indexed": 29,
-  "indexing_time_ms": 6091,
+  "files_indexed": 7,
+  "chunks_indexed": 31,
+  "indexing_time_ms": 8822,
   "error": null
 }
 ```
@@ -583,7 +651,6 @@ Create a `.env` file in the project root:
 GROQ_API_KEY=your_actual_groq_api_key_here
 GROQ_MODEL=llama-3.1-8b-instant
 ```
-
 
 ### 6. Run the FastAPI backend
 
@@ -648,14 +715,39 @@ Example completed response:
 ```json
 {
   "status": "completed",
-  "files_indexed": 6,
-  "chunks_indexed": 29,
-  "indexing_time_ms": 6091,
-  "error": null
+  "files_indexed": 7,
+  "chunks_indexed": 31,
+  "indexing_time_ms": 8822,
+  "error": null,
+  "attempts": 1
 }
 ```
 
-### Step 3: View job status in Streamlit
+### Step 3: Confirm persistent job history
+
+Stop the backend and restart it:
+
+```powershell
+CTRL + C
+uvicorn backend.main:app --reload
+```
+
+Then run:
+
+```text
+GET /jobs
+```
+
+The previous job should still appear because job history is stored in SQLite.
+
+### Step 4: Filter jobs by status
+
+```text
+GET /jobs?status=completed
+GET /jobs?status=failed
+```
+
+### Step 5: View job status in Streamlit
 
 Open the Streamlit dashboard and click:
 
@@ -673,7 +765,7 @@ Chunks Indexed
 Indexing Time
 ```
 
-### Step 4: Load job history
+### Step 6: Load job history
 
 Click:
 
@@ -687,7 +779,7 @@ This fetches job history from:
 GET /jobs
 ```
 
-### Step 5: Run keyword search
+### Step 7: Run keyword search
 
 Use `POST /search` or the Streamlit dashboard with:
 
@@ -698,7 +790,7 @@ Use `POST /search` or the Streamlit dashboard with:
 }
 ```
 
-### Step 6: Run semantic search
+### Step 8: Run semantic search
 
 Use `POST /semantic-search` or the Streamlit dashboard with:
 
@@ -709,7 +801,7 @@ Use `POST /semantic-search` or the Streamlit dashboard with:
 }
 ```
 
-### Step 7: Ask a RAG question
+### Step 9: Ask a RAG question
 
 Use `POST /ask` or the Streamlit dashboard with:
 
@@ -722,16 +814,16 @@ Use `POST /ask` or the Streamlit dashboard with:
 
 ## Current Demo Metrics
 
-RepoPilot AI successfully indexed the MiniSearchX repository and returned keyword search, semantic search, RAG answer-generation, background job tracking, live Streamlit job-status results, and passing unit tests.
+RepoPilot AI successfully indexed the MiniSearchX repository and returned keyword search, semantic search, RAG answer-generation, background job tracking, persistent SQLite job history, live Streamlit job-status results, and passing unit tests.
 
 ```text
-Files indexed: 6
-Chunks indexed: 29
-Background indexing time: 6091 ms
+Files indexed: 7
+Chunks indexed: 31
+Background indexing time: 8822 ms
 Keyword query latency: 1 ms
 Semantic query latency: 45 ms
 RAG answer latency: 815 ms
-Unit tests: 5 passed
+Unit tests: 6 passed
 ```
 
 ## Demo Screenshots
@@ -774,7 +866,8 @@ Unit tests: 5 passed
 
 ## Status
 
-This is version `0.5.0`.
+This is version `0.6.0`.
+
 
 * GitHub repository cloning
 * Source-file parsing
@@ -789,15 +882,18 @@ This is version `0.5.0`.
 * Grounded answers with source file references
 * Background indexing jobs
 * UUID-based job IDs
+* SQLite-based persistent job storage
+* Persistent job history across backend restarts
 * Job-status polling
-* Job history for current backend session
+* Job history filtering by status
+* Job attempt tracking
 * Job timestamps
 * Error tracking for failed jobs
 * Streamlit dashboard
 * Live job-status polling in Streamlit dashboard
-* Dashboard support for `/index-job` and `/jobs/{job_id}`
+* Dashboard support for `/index-job`, `/jobs/{job_id}`, and `/jobs`
 * Unit tests for core workflows
-* Tests for chunking, file parsing, ignored-folder filtering, keyword ranking, and top-K behavior
+* Tests for chunking, file parsing, ignored-folder filtering, keyword ranking, top-K behavior, and SQLite job storage
 * Snippet extraction
 * Indexing-status tracking
 * Query-latency reporting
@@ -805,10 +901,8 @@ This is version `0.5.0`.
 * FastAPI Swagger documentation
 * Demo screenshots
 
-
 ## Upcoming Improvements
 
-* Add persistent job storage using SQLite or PostgreSQL
 * Add retry handling and failed-job logs
 * Add Celery/Redis-based background workers
 * Add Docker support
